@@ -4257,6 +4257,120 @@ async function preloadActionsFromEmails() {
   console.log('✓ Preloaded email actions 12/05/2026');
 }
 
+// ============ PRELOAD WhatsApp (12/05/2026) ============
+async function preloadActionsFromWhatsApp() {
+  if (LOCAL._meta && LOCAL._meta.preloadedWAActions20260512) return;
+
+  // 1. ASIER GONZÁLEZ — pare (Hugo) es queixa per WhatsApp del descuadre 267€ vs 160€
+  //    S'han enviat 2 correus erronis amb 267€. El sistema ja té l'import corregit (160€).
+  //    Draft de correcció creat 12/05/2026.
+  const asierId = '6526503524425189129';
+  const asierLocal = getLocal(asierId);
+  asierLocal.history = asierLocal.history || [];
+  if (!asierLocal.history.some(h => h.action && h.action.includes('WA Hugo descuadre'))) {
+    asierLocal.history.push({
+      date: '12/05/2026',
+      action: '⚠️ WA Hugo González (ainhugo@hotmail.es): es queixa per WhatsApp del descuadre 267€ vs 160€. S\'han enviat 2 correus erronis amb 267€. Import corregit al sistema: 160€ (S3 mitja jornada). Draft de correcció enviat a ainhugo@hotmail.es el 12/05/2026.'
+    });
+  }
+  if (!asierLocal.emailJustificants) asierLocal.emailJustificants = [];
+  if (!asierLocal.emailJustificants.some(e => e._key === 'waDescuadreAsier')) {
+    asierLocal.emailJustificants.push({
+      from: 'Hugo González <WhatsApp>',
+      subject: 'Queixa WhatsApp — descuadre import campus',
+      date: '12/05/2026',
+      body: 'Pare (Hugo González) contacta per WhatsApp: detecta que el sistema mostra 267€ però ell va contractar S3 mitja jornada (160€). 2 correus erronis enviats prèviament per Ana amb els imports equivocats.',
+      action: '✓ Import corregit al sistema (160€). Draft correcció enviat per email 12/05/2026. Confirmar que rep el nou import.',
+      _key: 'waDescuadreAsier'
+    });
+  }
+
+  // 2. PABLO SOLER NEIRA / HUGO SOLER MOYA — no sabia on pujar comprovant
+  //    Va enviar PDF per WhatsApp. JotForm ja té has_pdf:true (l'ha pujat posteriorment).
+  const pabloId = '6525132742227871435';
+  const pabloLocal = getLocal(pabloId);
+  pabloLocal.history = pabloLocal.history || [];
+  if (!pabloLocal.history.some(h => h.action && h.action.includes('WA comprovant Pablo'))) {
+    pabloLocal.history.push({
+      date: '12/05/2026',
+      action: '✓ WA Pablo Soler Neira (610311931): no sabia on pujar el comprovant i el va enviar per WhatsApp. JotForm ja té comprovant pujat ("Campus verano Barna.pdf"). Pagament 1r termini (247€ aprox) pendent de verificar al banc.'
+    });
+  }
+  if (!pabloLocal.emailJustificants) pabloLocal.emailJustificants = [];
+  if (!pabloLocal.emailJustificants.some(e => e._key === 'waComprovantPablo')) {
+    pabloLocal.emailJustificants.push({
+      from: 'Pablo Soler Neira <WhatsApp +34 610311931>',
+      subject: 'Comprovant campus enviat per WhatsApp',
+      date: '12/05/2026',
+      body: 'Pablo Soler Neira (pare de Hugo Soler Moya) envia PDF comprovant de pagament per WhatsApp perquè no sabia on pujar-lo al formulari. Posteriorment va pujar "Campus verano Barna.pdf" al JotForm.',
+      action: '✓ Comprovant rebut i pujat al JotForm. Verificar al banc que el pagament correspon a l\'import d\'1r termini de Hugo Soler Moya (S2+S3+S4+S5, total 780€ → 1r termini ≈247€).',
+      _key: 'waComprovantPablo'
+    });
+  }
+
+  // 3. MARTINA VILLANOVA — Sandra (familiar) contacta per WhatsApp sobre retard pagament
+  //    2n termini (160€) pendent. Avisa que pagarà a finals de mes.
+  const martinaVilId = '6524450635016888027';
+  const martinaVilLocal = getLocal(martinaVilId);
+  martinaVilLocal.history = martinaVilLocal.history || [];
+  if (!martinaVilLocal.history.some(h => h.action && h.action.includes('WA Sandra retard'))) {
+    martinaVilLocal.history.push({
+      date: '12/05/2026',
+      action: '⚠️ WA Sandra Pérez (familiar de Martina Villanova, 618968118): avisa per WhatsApp de retard en el 2n pagament (160€). Diu que pagarà a finals de maig 2026. Pendent confirmació cobrament.'
+    });
+  }
+  if (!martinaVilLocal.emailJustificants) martinaVilLocal.emailJustificants = [];
+  if (!martinaVilLocal.emailJustificants.some(e => e._key === 'waSandraRetard')) {
+    martinaVilLocal.emailJustificants.push({
+      from: 'Sandra Pérez <WhatsApp +34 618968118>',
+      subject: 'Retard 2n pagament Martina Villanova',
+      date: '12/05/2026',
+      body: 'Familiar (Sandra Pérez) de Martina Villanova avisa per WhatsApp que el 2n pagament (160€) arribarà amb retard. Confirma que pagarà a finals de maig 2026. No hi ha comprovant de pagament al JotForm.',
+      action: '⚠️ PENDENT: Confirmar recepció 2n pagament (160€) a finals de maig 2026. Enviar recordatori si no s\'ha rebut el 01/06/2026.',
+      _key: 'waSandraRetard'
+    });
+  }
+
+  // 4. ESTHER SOLÉ VERDAGUER / RENÉ LAGO — inscripció duplicada (S4 mitja + S4 completa)
+  //    René Lago apareix 2 cops: 01/05 (S4 mitja, 160€) + 09/05 (S4 completa, 195€)
+  //    Esther contacta per WhatsApp sobre la confusió d'inscripció.
+  const reneLagoHalfId = '6534376767411155446';
+  const reneLagoFullId = '6541258206128828438';
+  [{ id: reneLagoHalfId, label: 'S4 mitja 160€ (01/05)' }, { id: reneLagoFullId, label: 'S4 completa 195€ (09/05)' }].forEach(({ id, label }) => {
+    const loc = getLocal(id);
+    loc.history = loc.history || [];
+    if (!loc.history.some(h => h.action && h.action.includes('WA Esther doble inscripció'))) {
+      loc.history.push({
+        date: '12/05/2026',
+        action: `⚠️ WA Esther Solé (sthertkontra88@gmail.com): René Lago té DOBLE INSCRIPCIÓ per a S4 — ${label} i una altra versió. Confirmar quina és la vàlida i cancel·lar el duplicat al JotForm. Ambdues entrades ACTIVES al sistema.`
+      });
+    }
+    if (!loc.emailJustificants) loc.emailJustificants = [];
+    if (!loc.emailJustificants.some(e => e._key === 'waEstherDoble')) {
+      loc.emailJustificants.push({
+        from: 'Esther Solé Verdaguer <WhatsApp / sthertkontra88@gmail.com>',
+        subject: 'Doble inscripció René Lago — S4',
+        date: '12/05/2026',
+        body: 'Esther Solé Verdaguer contacta per WhatsApp: René Lago apareix registrat dos cops a S4. Un cop com a mitja jornada (160€, 01/05) i un altre com a jornada completa (195€, 09/05). Confirmar quina versió és la correcta.',
+        action: '⚠️ PENDENT: Esbrinar quina inscripció és la definitiva. Cancel·lar el duplicat al JotForm i confirmar a Esther per email/WhatsApp. Verificar si ha pagat 195€ o 160€.',
+        _key: 'waEstherDoble'
+      });
+    }
+  });
+
+  // 5. PARE ANÒNIM — no té justificant de pagament (WhatsApp rebut)
+  //    Sense nom concret — afegir nota general al log de l'app.
+  if (!LOCAL._meta) LOCAL._meta = {};
+  if (!LOCAL._meta.waAnonymPagLog) {
+    LOCAL._meta.waAnonymPagLog = '12/05/2026 — WhatsApp rebut de pare anònim: reclama que no té justificant de pagament. Revisar llista "Sense pagament" per identificar el cas. Possible: família sense has_pdf ni cobrament Excel.';
+  }
+
+  if (!LOCAL._meta) LOCAL._meta = {};
+  LOCAL._meta.preloadedWAActions20260512 = true;
+  await saveLocal();
+  console.log('✓ Preloaded WhatsApp actions 12/05/2026');
+}
+
 // ============ INIT ============
 document.getElementById('search').addEventListener('input', renderInscriptions);
 document.getElementById('filterStatus').addEventListener('change', () => {
@@ -4443,6 +4557,7 @@ function enviarTotsElsEmails() {
   await preloadNewCobros();
   await preloadEmailJustificants();
   await preloadActionsFromEmails();
+  await preloadActionsFromWhatsApp();
   renderInscriptions();
   updateBadgeIssues();
   updateFilterCounts();
