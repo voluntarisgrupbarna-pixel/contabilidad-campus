@@ -4321,6 +4321,89 @@ async function preloadActionsFromEmails() {
   console.log('✓ Preloaded email actions 12/05/2026');
 }
 
+// ============ PRELOAD WhatsApp 2ª passada (12/05/2026) — informe complet ============
+async function preloadActionsFromWhatsApp2() {
+  if (LOCAL._meta && LOCAL._meta.preloadedWAActions2_20260512) return;
+
+  // 1. ASIER GONZÁLEZ — context addicional: lesió rodella campus 2025
+  //    El pare (Hugo) va comunicar per WA el 31/12/2025 que Asier tenia molt de dolor
+  //    a la rodella i no podia caminar durant el Timechamber Skills Lab anterior.
+  const asierId = '6526503524425189129';
+  const asierLocal = getLocal(asierId);
+  asierLocal.history = asierLocal.history || [];
+  if (!asierLocal.history.some(h => h.action && h.action.includes('rodella 2025'))) {
+    asierLocal.history.push({
+      date: '31/12/2025',
+      action: 'ℹ️ WA Hugo González (campus 2025): Asier tenia molt de dolor a la rodella i no podia caminar durant el Skills Lab. El pare va preguntar com avisar els entrenadors. Es va indicar contactar amb Adrià Mateo (dir. tècnic). — Context familiar important per al campus 2026.'
+    });
+  }
+
+  // 2. SARA HERRERA — 2 inscripcions (Victor Costa + Maria Costa Herrera)
+  //    WA "SaraMVP Safa Claror Campus" (22/4/2026) — últim missatge: "Oki perfecte!"
+  //    Suggereix que alguna consulta va quedar resolta. 2n termini de Victor Costa pendent.
+  const victorId = '6520067599413487053';
+  const mariaId  = '6527891794614023684';
+  [
+    { id: victorId,  label: 'Victor Costa', nota: '2n termini pendent. Verificar si és 16€ o 0€ (error de formulari).' },
+    { id: mariaId,   label: 'Maria Costa Herrera', nota: 'Pagament únic 160€. Excel: 144€ pagats (diferència 16€ — possible error o descompte informal).' }
+  ].forEach(({ id, label, nota }) => {
+    const loc = getLocal(id);
+    loc.history = loc.history || [];
+    if (!loc.history.some(h => h.action && h.action.includes('WA Sara Herrera'))) {
+      loc.history.push({
+        date: '22/04/2026',
+        action: `✅ WA Sara Herrera (sara.herrera.sh@gmail.com, 626923578 — "SaraMVP Safa Claror Campus"): consultà alguna cosa sobre el campus. Resolució: "Oki perfecte!". ${nota}`
+      });
+    }
+  });
+
+  // 3. ADRIÁN CANO MERINO — pare contacta per WA en febrer 2026 ("Us espero")
+  //    S'inscriu l'abril 2026. Té SIN_COMPROBANTE (no ha pujat PDF). Cobrament banc: 160€.
+  const adrianId = '6524424189481607716';
+  const adrianLocal = getLocal(adrianId);
+  adrianLocal.history = adrianLocal.history || [];
+  if (!adrianLocal.history.some(h => h.action && h.action.includes('WA Adrian Cano pre-inscripció'))) {
+    adrianLocal.history.push({
+      date: '04/02/2026',
+      action: '📋 WA "Adrian Cano Padre Barna Campus" (646656833): contactà per WA el 04/02/2026 dient "Us espero" — possiblement demanant informació del campus. S\'inscriu l\'abril 2026 (3 setmanes S2+S3+S4 mitja jornada, 480€, 3 terminis). ⚠️ No té comprovant pujat al JotForm però el banc mostra cobrament de 160€ (1r termini). Pendent: demanar justificant.'
+    });
+  }
+  if (!adrianLocal.emailJustificants) adrianLocal.emailJustificants = [];
+  if (!adrianLocal.emailJustificants.some(e => e._key === 'waAdrianCano')) {
+    adrianLocal.emailJustificants.push({
+      from: 'Adrian Cano Padre <WhatsApp +34 646656833>',
+      subject: 'Contacte pre-inscripció febrer 2026',
+      date: '04/02/2026',
+      body: 'Pare d\'Adrián Cano Merino contacta per WhatsApp el 04/02 dient "Us espero". Posteriorment s\'inscriu l\'abril 2026 (S2+S3+S4, mitja jornada, 480€). El banc mostra pagament de 160€ (1r termini) però no ha pujat comprovant al formulari.',
+      action: '⚠️ PENDENT: Enviar email demanant justificant de pagament de 160€. Recordar 2n termini (160€, maig 2026) i 3r termini (160€, juny 2026).',
+      _key: 'waAdrianCano'
+    });
+  }
+
+  // 4. GERARD PUNTI VIDAL — LEAD POTENCIAL (no és al sistema)
+  //    WA "GB Gerard Punti Vidal" (5/5/2026): vol pagar el campus del Barna per al seu fill
+  //    (2 setmanes). Se li facilita l'enllaç timechamber.skywork.website.
+  //    A data 12/05/2026 NO hi ha inscripció al JotForm. Possible lead perdut.
+  if (!LOCAL._meta) LOCAL._meta = {};
+  if (!LOCAL._meta.leadGerardPuntiVidal) {
+    LOCAL._meta.leadGerardPuntiVidal = {
+      date: '05/05/2026',
+      contact: 'Gerard Punti Vidal (WhatsApp, grup intern "GB")',
+      detail: 'Vol inscriure el seu fill al campus (2 setmanes, campus Barna). Se li va facilitar l\'enllaç timechamber.skywork.website. A data 12/05/2026 no hi ha inscripció al JotForm. Contactar per confirmar si ha completat la inscripció o si necessita ajuda.',
+      action: '⚠️ PENDENT: Verificar si ha completat la inscripció. Si no: fer seguiment per WhatsApp i oferir ajuda per completar-la.'
+    };
+  }
+
+  // 5. PARE ANÒNIM 17/6/2025 — arxivat (campus 2025, no afecta 2026)
+  if (!LOCAL._meta.waAnon2025Arxivat) {
+    LOCAL._meta.waAnon2025Arxivat = 'Arxivat: pare anònim (17/6/2025) que no havia registrat el nom del menor ni tenia justificant — era campus 2025, no afecta comptabilitat 2026.';
+  }
+
+  LOCAL._meta.preloadedWAActions2_20260512 = true;
+  await saveLocal();
+  console.log('✓ Preloaded WhatsApp actions 2ª passada 12/05/2026');
+}
+
 // ============ PRELOAD WhatsApp (12/05/2026) ============
 async function preloadActionsFromWhatsApp() {
   if (LOCAL._meta && LOCAL._meta.preloadedWAActions20260512) return;
@@ -4628,6 +4711,7 @@ function enviarTotsElsEmails() {
   await preloadEmailJustificants();
   await preloadActionsFromEmails();
   await preloadActionsFromWhatsApp();
+  await preloadActionsFromWhatsApp2();
   renderInscriptions();
   updateBadgeIssues();
   updateFilterCounts();
