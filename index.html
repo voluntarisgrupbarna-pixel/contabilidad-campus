@@ -39,14 +39,49 @@
   .search-tag { display: inline-flex; align-items: center; gap: 4px; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; border-radius: 12px; padding: 1px 8px; font-size: 11px; font-weight: 600; }
   .search-no-results { color: #dc2626; font-weight: 600; }
 
-  .insc-card { background: white; border-radius: 10px; margin-bottom: 8px; overflow: hidden; border-left: 4px solid #10b981; }
+  .insc-card { background: white; border-radius: 10px; margin-bottom: 8px; overflow: hidden; border-left: 4px solid #10b981; transition: box-shadow 0.3s; }
   .insc-card.has-issues { border-left-color: #ef4444; }
 .insc-card.is-cancelled { background:#f3f4f6; opacity:0.7; }
 .insc-card.is-cancelled .insc-name { text-decoration:line-through; color:#6b7280; }
 .insc-card.is-closed { background:#f0fdf4; border-left:4px solid #10b981; }
 .insc-card.is-waiting { background:#f5f3ff; border-left:4px solid #8b5cf6; }
   .insc-card.has-warning { border-left-color: #f59e0b; }
-  .insc-header { padding: 12px 16px; cursor: pointer; display: grid; grid-template-columns: 2fr 2fr 1fr 1fr 1fr 1fr; gap: 12px; align-items: center; font-size: 13px; }
+
+  /* ===== URGENT NEON ===== */
+  .insc-card.is-urgent {
+    border-left: 5px solid #ff0000 !important;
+    background: linear-gradient(135deg,#fff5f5 0%,#ffffff 60%) !important;
+    animation: urgentPulse 2s ease-in-out infinite;
+  }
+  .insc-card.is-urgent .insc-header:hover { background: #fff0f0 !important; }
+  .insc-card.is-urgent.open .insc-header { background: #fff0f0 !important; border-bottom-color: #fecaca !important; }
+  @keyframes urgentPulse {
+    0%,100% { box-shadow: 0 0 0 1px #ff000022, 0 0 10px #ff000055, 0 0 22px #ff000018; }
+    50%      { box-shadow: 0 0 0 2px #ff000055, 0 0 22px #ff0000aa, 0 0 44px #ff000055; }
+  }
+
+  /* Selection */
+  .insc-card.is-selected { outline: 2px solid #ef4444 !important; outline-offset: 2px; }
+  .card-checkbox { width: 15px; height: 15px; cursor: pointer; accent-color: #ef4444; flex-shrink: 0; margin-top: 2px; }
+
+  /* Urgent badge pulsing */
+  .badge-urgent { background: #ef4444 !important; color: white !important; font-weight: 800 !important; animation: urgentBadge 1.5s ease-in-out infinite; }
+  @keyframes urgentBadge { 0%,100%{box-shadow:0 0 0 0 #ef444460} 50%{box-shadow:0 0 0 4px #ef444422} }
+
+  /* Floating action bar */
+  #urgentBar {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: #111827; color: white; padding: 12px 20px; border-radius: 14px;
+    display: none; align-items: center; gap: 10px; font-size: 13px; font-weight: 600;
+    z-index: 9999; box-shadow: 0 8px 40px rgba(0,0,0,0.5); white-space: nowrap;
+    border: 1px solid #374151;
+  }
+  #urgentBar.visible { display: flex; }
+  #urgentBar button { padding: 6px 14px; border-radius: 8px; border: none; cursor: pointer; font-size: 12px; font-weight: 700; }
+  .urgentBarSep { color: #6b7280; }
+
+  /* Header grid with checkbox */
+  .insc-header { padding: 12px 16px; cursor: pointer; display: grid; grid-template-columns: 22px 2fr 2fr 1fr 1fr 1fr 1fr; gap: 10px; align-items: center; font-size: 13px; }
   .insc-header:hover { background: #fafafa; }
   .insc-card.open .insc-header { background: #fafafa; border-bottom: 1px solid #f0f0f0; }
   .insc-name { font-weight: 600; font-size: 14px; }
@@ -165,8 +200,10 @@
         <button id="searchClearBtn" onclick="clearSearch()" title="Esborrar cerca">×</button>
       </div>
       <button id="batchSendBtn" onclick="batchSendPerfect()" style="display:none;background:#10b981;color:white;border:none;padding:10px 16px;border-radius:6px;cursor:pointer;font-weight:600">📨 Enviar als perfectes en ràfega</button>
+      <button onclick="selectAllUrgents()" style="background:#ef4444;color:white;border:none;padding:9px 14px;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;white-space:nowrap;animation:urgentBadge 2s ease-in-out infinite">🚨 Urgents</button>
       <select id="filterStatus">
         <option value="">Tots els estats</option>
+        <option value="urgent">🚨 Urgents (acció avui)</option>
         <option value="perfect">⭐ Perfectes (per donar OK)</option>
         <option value="paid">✅ Al dia</option>
         <option value="pending">⏳ Pendents</option>
@@ -192,6 +229,15 @@
     </div>
     <div id="searchResultsInfo"></div>
     <div id="inscList"></div>
+
+  <!-- Floating urgent bar -->
+  <div id="urgentBar">
+    <span>🚨</span>
+    <span id="urgentBarCount">0 seleccionats</span>
+    <span class="urgentBarSep">|</span>
+    <button onclick="selectAllUrgents()" style="background:#ef4444;color:white">Sel·leccionar tots els urgents</button>
+    <button onclick="clearSelection()" style="background:#374151;color:#9ca3af">✕ Netejar</button>
+  </div>
   </div>
 
   <!-- ISSUES -->
@@ -1432,6 +1478,8 @@ function renderInscriptions() {
     if (week && !(a.weeks || []).some(w => w.code === week)) return false;
     const status = getStatus(a);
     const issues = getActiveIssues(a);
+    // Urgent filter
+    if (filter === 'urgent' && !isUrgent(a)) return false;
     // Exclude form errors from all default views (except specific filter)
     const isError = isFormError(a);
     if (isError && filter !== 'errors') return false;
@@ -1503,6 +1551,11 @@ function renderInscriptions() {
 
   document.getElementById('badge-total').textContent = list.length;
 
+  // Update urgent count in button
+  const urgentCount = ANALYZED.filter(isUrgent).length;
+  const urgBtn = document.querySelector('button[onclick="selectAllUrgents()"]');
+  if (urgBtn) urgBtn.textContent = '🚨 Urgents (' + urgentCount + ')';
+
   // Search results info bar
   const infoEl = document.getElementById('searchResultsInfo');
   if (infoEl) {
@@ -1534,9 +1587,11 @@ function renderInscCard(a) {
   const issues = getActiveIssues(a);
   const cardLocal = getLocal(a.id);
 
+  const urgent = isUrgent(a);
   let cls = '';
   if (cardLocal.cancelled) cls = 'is-cancelled';
   else if (cardLocal.incidenceClosed) cls = 'is-closed';
+  else if (urgent) cls = 'is-urgent';
   else if (cardLocal.waitingResponse) cls = 'is-waiting';
   else if (issues.some(i => i.sev === 'ALTA')) cls = 'has-issues';
   else if (issues.some(i => i.sev === 'MEDIA')) cls = 'has-warning';
@@ -1553,20 +1608,29 @@ function renderInscCard(a) {
   else if (cardLocal.needsReview) stateBadge = '<span class="badge" style="background:#dc2626;color:white;font-weight:700">📥 RESPOSTA REBUDA - REVISAR</span>';
   else if (cardLocal.waitingResponse) stateBadge = '<span class="badge" style="background:#8b5cf6;color:white">⏳ Esperant</span>';
 
-  const issuesBadge = issues.length > 0 ? '<span class="badge badge-red">' + issues.length + '⚠</span>' : '';
+  const issuesBadge = issues.length > 0
+    ? '<span class="badge ' + (urgent ? 'badge-urgent' : 'badge-red') + '">' + issues.length + '⚠</span>'
+    : '';
+  const urgentBadge = urgent && !cardLocal.needsReview
+    ? '<span class="badge badge-urgent">🚨 URGENT</span>'
+    : '';
   const noPdfBadge = !a.has_pdf ? '<span class="badge badge-yellow">📄</span>' : '';
 
   const weeks = (a.weeks || []).map(w => '<span class="badge badge-orange">' + w.code + (w.type === 'half' ? '½' : '') + '</span>').join(' ');
 
-  return '<div class="insc-card ' + cls + '" id="insc-' + a.id + '">' +
+  const isSel = SELECTED.has(a.id);
+  const selCls = isSel ? ' is-selected' : '';
+
+  return '<div class="insc-card ' + cls + selCls + '" id="insc-' + a.id + '">' +
     '<div class="insc-header" onclick="toggleInsc(\'' + a.id + '\')">' +
+      '<input type="checkbox" class="card-checkbox" id="cb-' + a.id + '" ' + (isSel ? 'checked' : '') + ' onclick="toggleSelect(\'' + a.id + '\',event)">' +
       '<div><div class="insc-name">' + escapeHtml(a.child || '(sense nom)') + '</div>' +
       '<small style="color:#888">' + escapeHtml(a.guardian || '') + ' · ' + escapeHtml(a.email || '') + '</small></div>' +
       '<div>' + (weeks || '<small style="color:#888">cap setmana</small>') + '</div>' +
       '<div class="num"><strong>' + fmt(total) + '</strong></div>' +
       '<div class="num" style="color:#3b82f6"><strong>' + fmt(received) + '</strong></div>' +
       '<div class="num" style="color:' + (pending > 0 ? '#ef4444' : '#10b981') + '">' + fmt(pending) + '</div>' +
-      '<div>' + statusBadge + ' ' + stateBadge + ' ' + issuesBadge + ' ' + noPdfBadge + '</div>' +
+      '<div>' + statusBadge + ' ' + stateBadge + ' ' + urgentBadge + ' ' + issuesBadge + ' ' + noPdfBadge + '</div>' +
     '</div>' +
     '<div class="insc-body" id="body-' + a.id + '"></div>' +
   '</div>';
@@ -4519,6 +4583,72 @@ async function preloadActionsFromWhatsApp() {
 }
 
 // ============ INIT ============
+// ===== URGENT & SELECTION SYSTEM =====
+const SELECTED = new Set();
+
+function isUrgent(a) {
+  const local = LOCAL[a.id] || {};
+  if (local.cancelled || local.incidenceClosed) return false;
+  if (local.needsReview) return true;
+  const issues = getActiveIssues(a);
+  return issues.some(i => i.sev === 'ALTA');
+}
+
+function toggleSelect(id, event) {
+  if (event) event.stopPropagation();
+  const card = document.getElementById('insc-' + id);
+  const cb   = document.getElementById('cb-' + id);
+  if (SELECTED.has(id)) {
+    SELECTED.delete(id);
+    if (card) card.classList.remove('is-selected');
+    if (cb)   cb.checked = false;
+  } else {
+    SELECTED.add(id);
+    if (card) card.classList.add('is-selected');
+    if (cb)   cb.checked = true;
+  }
+  updateUrgentBar();
+}
+
+function selectAllUrgents() {
+  ANALYZED.forEach(a => {
+    if (isUrgent(a)) {
+      const card = document.getElementById('insc-' + a.id);
+      const cb   = document.getElementById('cb-' + a.id);
+      SELECTED.add(a.id);
+      if (card) card.classList.add('is-selected');
+      if (cb)   cb.checked = true;
+    }
+  });
+  // Switch to urgent filter to show them
+  const sel = document.getElementById('filterStatus');
+  if (sel && sel.value !== 'urgent') { sel.value = 'urgent'; renderInscriptions(); }
+  updateUrgentBar();
+}
+
+function clearSelection() {
+  SELECTED.forEach(id => {
+    const card = document.getElementById('insc-' + id);
+    const cb   = document.getElementById('cb-' + id);
+    if (card) card.classList.remove('is-selected');
+    if (cb)   cb.checked = false;
+  });
+  SELECTED.clear();
+  updateUrgentBar();
+}
+
+function updateUrgentBar() {
+  const bar  = document.getElementById('urgentBar');
+  const cnt  = document.getElementById('urgentBarCount');
+  if (!bar) return;
+  if (SELECTED.size > 0) {
+    bar.classList.add('visible');
+    cnt.textContent = SELECTED.size + ' seleccionat' + (SELECTED.size !== 1 ? 's' : '');
+  } else {
+    bar.classList.remove('visible');
+  }
+}
+
 function clearSearch() {
   const inp = document.getElementById('search');
   if (inp) { inp.value = ''; inp.focus(); }
