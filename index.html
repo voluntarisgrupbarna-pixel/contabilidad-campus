@@ -4792,6 +4792,48 @@ function enviarTotsElsEmails() {
   });
 }
 
+async function preloadCordóbaConfirmation() {
+  if (LOCAL._meta && LOCAL._meta.preloadedCordóba_20260512) return;
+  if (!LOCAL._meta) LOCAL._meta = {};
+  const today = '12/05/2026';
+
+  // Xenia Pinto Bermúdez (xenia.pinto@cuatrecasas.com) ha confirmat el 20% per a AMBDUES filles
+  // Ana va enviar el càlcul corregit el 11/05 (Martina). Xenia va respondre: "Aplica també a Noa Córdoba?"
+  // Ana va respondre: "Sii!!!" → 20% confirmat per a les dues.
+
+  // === MARTINA CÓRDOBA PINTO — 20% confirmat, mail rebut i acceptat ===
+  {
+    const id = '6526997810411997382';
+    const l = getLocal(id);
+    if (!l.history) l.history = [];
+    l.discountAdjustmentAccepted = true;
+    l.waitingResponse = { sentDate: '11/05/2026', type: 'mail corregit 20%' };
+    l.history.push({
+      action: '✅ 20% descompte confirmat per Xenia (mail + resposta)',
+      date: today,
+      note: 'Xenia Pinto (xenia.pinto@cuatrecasas.com) ha respost al mail del 11/05: "Mil gràcies, Ana." — 20% acceptat. Total: 156€. Pagat: 58,50€. Pendent: 97,50€ (2×48,75€ en terminis 2 i 3).'
+    });
+  }
+
+  // === NOA CÓRDOBA PINTO — 20% confirmat per "Sii!!!" d'Ana a la resposta de Xenia ===
+  {
+    const id = '6527000440414241642';
+    const l = getLocal(id);
+    if (!l.history) l.history = [];
+    l.discountAdjustmentAccepted = true;
+    l.needsReview = true;
+    l.needsReviewReason = 'Xenia va preguntar si el 20% aplica també a Noa. Ana va confirmar "Sii!!!". PENDENT: enviar mail a Xenia amb el resum actualitzat de la Noa (156€, pendent 97,50€ en 2×48,75€).';
+    l.history.push({
+      action: '✅ 20% descompte confirmat per Ana ("Sii!!!")',
+      date: today,
+      note: 'Xenia Pinto va preguntar (11/05 16:16): "Aplica també a la Noa Córdoba?" Ana va respondre: "Sii!!!". Cal enviar mail de resum actualitzat a Xenia per la Noa. Total: 156€. Pagat: 58,50€. Pendent: 97,50€.'
+    });
+  }
+
+  LOCAL._meta.preloadedCordóba_20260512 = true;
+  await saveLocal();
+}
+
 async function preloadRepliesDay2() {
   if (LOCAL._meta && LOCAL._meta.preloadedRepliesDay2_20260512) return;
   if (!LOCAL._meta) LOCAL._meta = {};
@@ -4880,6 +4922,7 @@ async function preloadRepliesDay2() {
   await preloadActionsFromWhatsApp();
   await preloadActionsFromWhatsApp2();
   await preloadRepliesDay2();
+  await preloadCordóbaConfirmation();
   renderInscriptions();
   updateBadgeIssues();
   updateFilterCounts();
