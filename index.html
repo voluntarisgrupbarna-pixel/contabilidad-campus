@@ -1287,6 +1287,7 @@ function renderStatusOverview() {
   let noPdfNoBank = 0;
   let pendingDataCount = 0;  // 6 from Pere
   let cancelledCount = 0;
+  let mailsPendentsCount = 0; // urgent with no mail sent yet
   
   ANALYZED.forEach(a => {
     totalInsc++;
@@ -1332,6 +1333,10 @@ function renderStatusOverview() {
     
     if (issues.length > 0) {
       issuesCount++;
+    }
+    // Urgent without mail sent yet
+    if (local.needsReview || issues.some(i => i.sev === 'ALTA')) {
+      mailsPendentsCount++;
     }
   });
   
@@ -1402,7 +1407,20 @@ function renderStatusOverview() {
       '<div style="font-size:22px;font-weight:700;color:#374151">' + cancelledCount + '</div>' +
       '<div style="font-size:11px;color:#666">No vindran al campus</div>' +
     '</div>' : '') +
-    
+
+    '<div onclick="filterTo(\'waiting\')" style="cursor:pointer;background:#ede9fe;padding:10px;border-radius:6px;border-left:3px solid #7c3aed">' +
+      '<div style="font-size:11px;color:#4c1d95;text-transform:uppercase;font-weight:600">📨 Mails enviats</div>' +
+      '<div style="font-size:22px;font-weight:700;color:#4c1d95">' + waitingCount + '</div>' +
+      '<div style="font-size:11px;color:#666">Esperant resposta família</div>' +
+    '</div>' +
+
+    (mailsPendentsCount > 0 ?
+    '<div onclick="filterTo(\'urgent\')" style="cursor:pointer;background:#fff1f2;padding:10px;border-radius:6px;border-left:3px solid #f43f5e">' +
+      '<div style="font-size:11px;color:#881337;text-transform:uppercase;font-weight:600">📧 Pendents d\'enviar</div>' +
+      '<div style="font-size:22px;font-weight:700;color:#be123c">' + mailsPendentsCount + '</div>' +
+      '<div style="font-size:11px;color:#666">Urgents sense mail enviat</div>' +
+    '</div>' : '') +
+
     '</div>' +
     '<p style="font-size:11px;color:#888;margin-top:10px">💡 Clica una targeta per filtrar i veure aquestes inscripcions.</p>' +
     '</div>';
@@ -2073,17 +2091,29 @@ function renderInscBody(id) {
   }
   mailBody += NL + 'Salutacions,' + NL + FROM_NAME + NL + '🏀 TimeChamber Experience 2026';
   
-  html += '<details><summary style="cursor:pointer;font-weight:500;color:#065f46">👁 Veure mail proposat</summary>';
-  html += '<div style="background:white;padding:10px;border-radius:5px;margin-top:8px;font-size:12px;font-family:monospace;white-space:pre-wrap;border:1px solid #d1fae5">' + escapeHtml(mailBody) + '</div>';
-  html += '</details>';
-  
-  html += '<div style="margin-top:10px"><label style="font-size:12px;color:#065f46;font-weight:500">📝 Anotacions per al mail / registre intern:</label>';
-  html += '<textarea id="annot-' + id + '" placeholder="Afegeix qualsevol anotació o aclariment per registrar el cas (ex: La mare va trucar dimarts. Va fer Bizum 100€ el 25/04...)" style="width:100%;min-height:80px;margin-top:6px;padding:8px;border:1px solid #d1fae5;border-radius:5px;font-family:inherit;font-size:13px">' + escapeHtml(local.lastAnnotation || '') + '</textarea></div>';
-  
+  // Use saved draft or auto-generated body
+  const draftText = local.emailDraft || mailBody;
+
+  html += '<div style="margin-top:10px">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+  html += '<label style="font-size:12px;color:#065f46;font-weight:600">📧 Mail proposat <span style="font-size:11px;color:#888;font-weight:400">(editable · clica 💾 per conservar canvis)</span></label>';
+  html += '<button onclick="refreshEmailDraft(\''+id+'\')" title="Regenerar des de zero i descartar edicions" style="font-size:11px;padding:3px 8px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;cursor:pointer;color:#065f46">🔄 Regenerar</button>';
+  html += '</div>';
+  html += '<textarea id="emaildraft-' + id + '" style="width:100%;min-height:220px;padding:10px;border:1.5px solid #a7f3d0;border-radius:6px;font-family:monospace;font-size:12px;resize:vertical;box-sizing:border-box;background:#f8fffe;line-height:1.5">' + escapeHtml(draftText) + '</textarea>';
+  html += '<div style="display:flex;gap:8px;align-items:center;margin-top:6px">';
+  html += '<button onclick="saveEmailDraft(\''+id+'\')" style="font-size:12px;padding:5px 12px;background:#065f46;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:500">💾 Desar esborrany</button>';
+  html += '<span id="emaildraft-saved-'+id+'" style="font-size:11px;color:#10b981;display:none">✓ Esborrany desat</span>';
+  html += (local.emailDraft ? '<span style="font-size:11px;color:#6b7280">· edició personalitzada activa</span>' : '');
+  html += '</div>';
+  html += '</div>';
+
+  html += '<div style="margin-top:10px"><label style="font-size:12px;color:#4b5563;font-weight:500">📝 Anotació interna <span style="font-size:11px;font-weight:400">(no s\'envia · per al teu registre)</span>:</label>';
+  html += '<textarea id="annot-' + id + '" placeholder="Afegeix qualsevol anotació o aclariment per registrar el cas (ex: La mare va trucar dimarts. Va fer Bizum 100€ el 25/04...)" style="width:100%;min-height:60px;margin-top:6px;padding:8px;border:1px solid #e5e7eb;border-radius:5px;font-family:inherit;font-size:13px">' + escapeHtml(local.lastAnnotation || '') + '</textarea></div>';
+
   html += '<div class="actions" style="margin-top:10px">';
   html += '<button class="btn-success" onclick="prepareAndSendMail(\''+id+'\')">📨 OK · Obrir a Gmail</button>';
-  html += '<button class="btn-info" onclick="copyMailWithAnnotation(\''+id+'\')">📋 Copiar mail al portapapers</button>';
-  html += '<button class="btn-secondary" onclick="saveAnnotationOnly(\''+id+'\')">💾 Desar només l\'anotació</button>';
+  html += '<button class="btn-info" onclick="copyMailFromDraft(\''+id+'\')">📋 Copiar mail al portapapers</button>';
+  html += '<button class="btn-secondary" onclick="saveAnnotationOnly(\''+id+'\')">💾 Desar anotació interna</button>';
   html += '</div>';
   html += '</div>';
   
@@ -2233,22 +2263,26 @@ function buildMailForCase(id) {
 async function prepareAndSendMail(id) {
   const mail = buildMailForCase(id);
   if (!mail) return;
-  
+
+  // Prefer the inline editable draft if the card is expanded
+  const draftEl = document.getElementById('emaildraft-' + id);
+  const bodyToUse = (draftEl && draftEl.value.trim()) ? draftEl.value : mail.body;
+
   // CRITICAL: save the mail data so execGmailSend can find it
   window._currentMail = { id: id, to: mail.to, subject: mail.subject, annotation: mail.annotation };
-  
+
   // Show a preview modal with multiple options
   const modal = document.getElementById('modal');
   const content = document.getElementById('modalContent');
-  
-  content.innerHTML = 
+
+  content.innerHTML =
     '<button class="modal-close" onclick="closeModal()">×</button>' +
     '<h2>📨 Enviar mail</h2>' +
     '<div style="background:#f8fafc;padding:10px;border-radius:6px;margin-bottom:10px;font-size:13px">' +
       '<strong>Per a:</strong> ' + escapeHtml(mail.to) + '<br>' +
       '<strong>Assumpte:</strong> ' + escapeHtml(mail.subject) +
     '</div>' +
-    '<textarea id="mail-preview-' + id + '" style="width:100%;min-height:280px;padding:10px;border:1px solid #ddd;border-radius:6px;font-family:inherit;font-size:13px;margin-bottom:10px">' + escapeHtml(mail.body) + '</textarea>' +
+    '<textarea id="mail-preview-' + id + '" style="width:100%;min-height:280px;padding:10px;border:1px solid #ddd;border-radius:6px;font-family:inherit;font-size:13px;margin-bottom:10px">' + escapeHtml(bodyToUse) + '</textarea>' +
     '<div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:10px;border-radius:5px;font-size:12px;margin-bottom:12px">' +
       '<strong>💡 Si Gmail dóna error:</strong> Usa "Copiar al portapapers", obre Gmail manualment i pega el contingut. És més fiable.' +
     '</div>' +
@@ -2408,6 +2442,58 @@ async function saveAnnotationOnly(id) {
   if (body) body.innerHTML = renderInscBody(id);
 }
 
+
+async function saveEmailDraft(id) {
+  const el = document.getElementById('emaildraft-' + id);
+  if (!el) return;
+  const local = getLocal(id);
+  local.emailDraft = el.value;
+  await saveLocal();
+  // Flash the saved badge
+  const badge = document.getElementById('emaildraft-saved-' + id);
+  if (badge) {
+    badge.style.display = 'inline';
+    setTimeout(() => { badge.style.display = 'none'; }, 2000);
+  }
+}
+
+async function refreshEmailDraft(id) {
+  if (!confirm('Regenerar el mail des de zero? Es perdran les edicions manuals que no hagis desat.')) return;
+  const local = getLocal(id);
+  delete local.emailDraft;
+  await saveLocal();
+  // Rebuild the card body to repopulate from scratch
+  const body = document.getElementById('body-' + id);
+  if (body) body.innerHTML = renderInscBody(id);
+}
+
+async function copyMailFromDraft(id) {
+  const draftEl = document.getElementById('emaildraft-' + id);
+  const mail = buildMailForCase(id);
+  if (!mail) return;
+  const bodyToUse = draftEl ? draftEl.value : mail.body;
+  const text = 'Per a: ' + mail.to + '\nAssumpte: ' + mail.subject + '\n\n' + bodyToUse;
+  try {
+    await navigator.clipboard.writeText(text);
+    alert('✓ Mail copiat al portapapers.\n\nAra obre Gmail manualment i pega-ho (Cmd+V).');
+    const local = getLocal(id);
+    if (!local.history) local.history = [];
+    local.history.push({
+      action: '📋 Mail copiat al portapapers',
+      date: new Date().toLocaleDateString('ca-ES')
+    });
+    local.waitingResponse = { sentDate: new Date().toLocaleDateString('ca-ES'), type: 'mail copiat' };
+    await saveLocal();
+    renderInscriptions();
+    updateFilterCounts();
+    setTimeout(() => {
+      const body = document.getElementById('body-' + id);
+      if (body) body.innerHTML = renderInscBody(id);
+    }, 300);
+  } catch (e) {
+    prompt('Copia aquest text manualment (Cmd+A, Cmd+C):', text);
+  }
+}
 
 async function cancelInscription(id) {
   const a = ANALYZED.find(x => x.id === id);
