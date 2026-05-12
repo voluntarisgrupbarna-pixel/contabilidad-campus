@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Comptabilitat Campus Estiu TimeChamber V4.2</title>
+<title>Comptabilitat Campus Estiu TimeChamber V4.0</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, system-ui, sans-serif; background: #f4f5f7; color: #1a1a1a; padding: 16px; line-height: 1.5; }
@@ -29,9 +29,15 @@
   .card { background: white; border-radius: 10px; padding: 18px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
   .card h3 { font-size: 15px; margin-bottom: 12px; }
 
-  .filter-bar { background: white; padding: 12px; border-radius: 10px; margin-bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .filter-bar { background: white; padding: 12px; border-radius: 10px; margin-bottom: 6px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .filter-bar input, .filter-bar select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
-  .filter-bar input[type="text"] { flex: 1; min-width: 200px; }
+  .search-wrapper { position: relative; flex: 1; min-width: 220px; display: flex; align-items: center; }
+  .search-wrapper input[type="text"] { width: 100%; padding-right: 36px; box-sizing: border-box; }
+  #searchClearBtn { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; font-size: 17px; line-height: 1; cursor: pointer; color: #9ca3af; padding: 2px 4px; display: none; border-radius: 50%; }
+  #searchClearBtn:hover { background: #f3f4f6; color: #374151; }
+  #searchResultsInfo { font-size: 12px; color: #6b7280; margin: 0 2px 8px; min-height: 18px; display: flex; align-items: center; gap: 8px; }
+  .search-tag { display: inline-flex; align-items: center; gap: 4px; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; border-radius: 12px; padding: 1px 8px; font-size: 11px; font-weight: 600; }
+  .search-no-results { color: #dc2626; font-weight: 600; }
 
   .insc-card { background: white; border-radius: 10px; margin-bottom: 8px; overflow: hidden; border-left: 4px solid #10b981; }
   .insc-card.has-issues { border-left-color: #ef4444; }
@@ -154,7 +160,10 @@
     </div>
     
     <div class="filter-bar">
-      <input type="text" id="search" placeholder="🔍 Cerca per nom, email, club...">
+      <div class="search-wrapper">
+        <input type="text" id="search" placeholder="🔍 Cerca per nom, tutor, email, club, telèfon, import, setmana, promo, nota, WhatsApp...">
+        <button id="searchClearBtn" onclick="clearSearch()" title="Esborrar cerca">×</button>
+      </div>
       <button id="batchSendBtn" onclick="batchSendPerfect()" style="display:none;background:#10b981;color:white;border:none;padding:10px 16px;border-radius:6px;cursor:pointer;font-weight:600">📨 Enviar als perfectes en ràfega</button>
       <select id="filterStatus">
         <option value="">Tots els estats</option>
@@ -181,6 +190,7 @@
         <option value="S6">S6 · Skills Lab Experience</option>
       </select>
     </div>
+    <div id="searchResultsInfo"></div>
     <div id="inscList"></div>
   </div>
 
@@ -897,7 +907,7 @@ function isFormError(a) {
   if (!a.has_pdf) missing++;
   if (!a.excel_payments || a.excel_payments.length === 0) missing++;
   
-  return missing >= 5;
+  return missing >= 4;
 }
 
 function getMissingFields(a) {
@@ -1369,19 +1379,54 @@ function renderInscriptions() {
   const filter = document.getElementById('filterStatus').value;
   const week = document.getElementById('filterWeek').value;
 
+  // Show/hide clear button
+  const clearBtn = document.getElementById('searchClearBtn');
+  if (clearBtn) clearBtn.style.display = search ? 'block' : 'none';
+
   const _norm = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
-  const q = _norm(search);
+  const q = _norm(search.trim());
 
   let list = ANALYZED.filter(a => {
     if (q) {
       const total = a.subtotal_con_descuento || 0;
       const received = getReceived(a);
       const pending = total - received;
-      const hay = _norm([
+      const local = LOCAL[a.id] || {};
+      const parts = [
+        // Dades JotForm
         a.child, a.guardian, a.email, a.club, a.phone,
-        a.talla, total.toFixed(2), received.toFixed(2), pending.toFixed(2),
-        (a.weeks||[]).map(w=>w.name+' '+w.code).join(' ')
-      ].join(' '));
+        a.talla, a.promo, a.plan, a.submitted,
+        // Imports (amb i sense decimals, per a cerques com "160" o "160.00")
+        total.toFixed(2), received.toFixed(2), pending.toFixed(2),
+        String(Math.round(total)), String(Math.round(received)), String(Math.round(pending)),
+        // Setmanes
+        ...(a.weeks||[]).map(w => (w.name||'')+' '+(w.code||'')+' '+(w.dates||'')+' '+(w.type==='half'?'mitja jornada':'jornada completa')),
+        // Incidències del JotForm
+        ...(a.issues||[]).map(i => (i.desc||'')+' '+(i.tipo||'').toLowerCase().replace(/_/g,' ')),
+        // Cobraments Excel assignats
+        ...(a.excel_payments||[]).map(p => (p.name||'')+' '+(p.note||'')),
+        // Terminis
+        ...(a.installments||[]).map(i => (i.label||'')+' '+(i.amount||'')+' '+(i.status==='paid'?'pagat':'pendent')),
+        // URLs comprovants (cerca per nom de fitxer)
+        ...(a.pdf_urls||[]).join(' '),
+        // Estat LOCAL: cancel·lació
+        local.cancelled ? ((local.cancelled.reason||'')+' cancel cancel·lat cancel·lada') : '',
+        // Estat LOCAL: tancada / esperant / revisar
+        local.incidenceClosed ? 'tancada resolta closed' : '',
+        local.waitingResponse ? 'esperant resposta waiting' : '',
+        local.needsReview ? 'revisar revisió resposta rebuda' : '',
+        // Historial d'accions
+        ...(local.history||[]).map(h => (h.action||'')+' '+(h.date||'')),
+        // Emails i notes (WhatsApp, comprovants, etc.)
+        ...(local.emailJustificants||[]).map(e => [(e.from||''),(e.subject||''),(e.body||''),(e.action||'')].join(' ')),
+        // Cobraments manuals assignats des de l'app
+        ...(local.assignedCobros||[]).map(c => (c.name||'')+' '+(c.amount||'')+' '+(c.note||'')),
+        // Nota lliure
+        local.nota || '',
+        // Estat derivat (pagat / parcial / sense pagar)
+        getStatus(a) === 'paid' ? 'pagat paid' : getStatus(a) === 'partial' ? 'parcial' : 'sense pagar unpaid',
+      ];
+      const hay = _norm(parts.filter(Boolean).join(' '));
       if (!hay.includes(q)) return false;
     }
     if (week && !(a.weeks || []).some(w => w.code === week)) return false;
@@ -1457,6 +1502,25 @@ function renderInscriptions() {
   });
 
   document.getElementById('badge-total').textContent = list.length;
+
+  // Search results info bar
+  const infoEl = document.getElementById('searchResultsInfo');
+  if (infoEl) {
+    if (q) {
+      const escQ = escapeHtml(search.trim());
+      const total_all = ANALYZED.length;
+      if (list.length === 0) {
+        infoEl.innerHTML = '<span class="search-no-results">❌ Cap resultat per «' + escQ + '»</span>';
+      } else {
+        // Try to identify which field matched for the first result (hint)
+        infoEl.innerHTML =
+          '<span class="search-tag">🔍 «' + escQ + '»</span>' +
+          '<span>' + list.length + ' de ' + total_all + ' inscripcions</span>';
+      }
+    } else {
+      infoEl.innerHTML = '';
+    }
+  }
 
   const html = list.map(renderInscCard).join('');
   document.getElementById('inscList').innerHTML = html || '<div class="card" style="text-align:center;color:#888">Cap inscripció amb aquests filtres</div>';
@@ -4372,6 +4436,12 @@ async function preloadActionsFromWhatsApp() {
 }
 
 // ============ INIT ============
+function clearSearch() {
+  const inp = document.getElementById('search');
+  if (inp) { inp.value = ''; inp.focus(); }
+  renderInscriptions();
+}
+
 document.getElementById('search').addEventListener('input', renderInscriptions);
 document.getElementById('filterStatus').addEventListener('change', () => {
   const isPerfect = document.getElementById('filterStatus').value === 'perfect';
