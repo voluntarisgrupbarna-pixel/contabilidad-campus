@@ -5763,6 +5763,45 @@ async function preloadGmailScanDay4Extra() {
   await saveLocal();
 }
 
+async function preloadCordobaConsolidatedDraft() {
+  if (LOCAL._meta && LOCAL._meta.preloadedCordobaDraft_20260514) return;
+  if (!LOCAL._meta) LOCAL._meta = {};
+  const today = '14/05/2026';
+  const draftId = 'r2786361966612850839';
+
+  // MARTINA CÓRDOBA — esborrany consolidat creat
+  {
+    const id = '6526997810411997382';
+    const l = getLocal(id);
+    if (!l.history) l.history = [];
+    l.waitingResponse = { sentDate: today, type: 'mail consolidat família (Martina + Noa, 20% confirmat)', draftId: draftId };
+    if (l.needsReview) delete l.needsReview;
+    if (l.needsReviewReason) delete l.needsReviewReason;
+    l.history.push({
+      action: '📝 Esborrany Gmail consolidat creat (Martina + Noa, 20%)',
+      date: today,
+      note: 'S\'ha creat esborrany a Gmail (' + draftId + ') amb resum consolidat per a Xenia Pinto (Martina + Noa, 20% confirmat). PENDENT: revisar i enviar des de Gmail.'
+    });
+  }
+  // NOA CÓRDOBA — esborrany consolidat creat
+  {
+    const id = '6527000440414241642';
+    const l = getLocal(id);
+    if (!l.history) l.history = [];
+    l.waitingResponse = { sentDate: today, type: 'mail consolidat família (Martina + Noa, 20% confirmat)', draftId: draftId };
+    if (l.needsReview) delete l.needsReview;
+    if (l.needsReviewReason) delete l.needsReviewReason;
+    l.history.push({
+      action: '📝 Esborrany Gmail consolidat creat (Martina + Noa, 20%)',
+      date: today,
+      note: 'S\'ha creat esborrany a Gmail (' + draftId + ') amb resum consolidat per a Xenia Pinto (Martina + Noa, 20% confirmat). PENDENT: revisar i enviar des de Gmail.'
+    });
+  }
+
+  LOCAL._meta.preloadedCordobaDraft_20260514 = true;
+  await saveLocal();
+}
+
 (async () => {
   await loadLocal();
   await preloadNewCobros();
@@ -5775,6 +5814,7 @@ async function preloadGmailScanDay4Extra() {
   await preloadDay3Incidencies();
   await preloadGmailScanDay4();
   await preloadGmailScanDay4Extra();
+  await preloadCordobaConsolidatedDraft();
   renderInscriptions();
   updateBadgeIssues();
   updateFilterCounts();
