@@ -1251,10 +1251,19 @@ async function bulkCloseIncidences(idsCsv, kind) {
 async function generateBulkConfirmMails(idsCsv) {
   const ids = idsCsv.split(',').filter(x => x);
   if (ids.length === 0) { alert('No hi ha cap cas.'); return; }
-  if (!confirm('S\'obriran ' + ids.length + ' pestanyes Gmail per generar els mails de confirmació d\'inscripció.\n\nVols continuar?')) return;
+
+  // Demana mida de la ràfega
+  const sizeStr = prompt('Quants mails vols enviar en aquesta ràfega?\n\nTotal pendent: ' + ids.length + '\n\nRecomanat: 10 o 20 (per no inundar el navegador).\n\nIntrodueix número (o "tots" per tots):', '10');
+  if (sizeStr === null) return;
+  let batchSize = sizeStr.toLowerCase() === 'tots' ? ids.length : parseInt(sizeStr, 10);
+  if (isNaN(batchSize) || batchSize < 1) { alert('Mida no vàlida.'); return; }
+  batchSize = Math.min(batchSize, ids.length);
+
+  const batch = ids.slice(0, batchSize);
+  if (!confirm('S\'obriran ' + batch.length + ' pestanyes Gmail (ràfega 1 de ' + Math.ceil(ids.length/batchSize) + ').\n\nCadascuna té el mail pre-omplert — només has de prémer "Send" a Gmail.\n\nQueden ' + (ids.length-batchSize) + ' per a properes ràfegues.\n\nVols continuar?')) return;
 
   let n = 0;
-  for (const id of ids) {
+  for (const id of batch) {
     const a = ANALYZED.find(x => x.id === id);
     if (!a) continue;
     const mail = buildMailForCase(id);
@@ -1264,18 +1273,18 @@ async function generateBulkConfirmMails(idsCsv) {
     window.open(url, '_blank');
     // Mark as waiting
     const local = getLocal(id);
-    local.waitingResponse = { sentDate: new Date().toLocaleDateString('ca-ES'), type: 'mail confirmació (bulk Gmail)' };
+    local.waitingResponse = { sentDate: new Date().toLocaleDateString('ca-ES'), type: 'mail confirmació (ràfega Gmail)' };
     if (!local.history) local.history = [];
     local.history.push({
-      action: '📨 Mail Gmail obert (bulk generació)',
+      action: '📨 Mail Gmail obert (ràfega)',
       date: new Date().toLocaleDateString('ca-ES'),
-      note: 'Mail de confirmació obert a Gmail des de Llistats (massiu).'
+      note: 'Mail de confirmació obert a Gmail des de Llistats (ràfega).'
     });
     n++;
-    await new Promise(r => setTimeout(r, 400));
+    await new Promise(r => setTimeout(r, 500));
   }
   await saveLocal();
-  alert('✓ S\'han obert ' + n + ' mails a Gmail. Revisa cada un i clica Send.');
+  alert('✓ S\'han obert ' + n + ' pestanyes Gmail.\n\nPassos:\n1. Vés a cada pestanya i clica "Send"\n2. Tornar aquí i clicar de nou per la propera ràfega\n\nQueden ' + (ids.length-batchSize) + ' inscripcions per enviar.');
   renderLists('noemail');
 }
 
@@ -2375,12 +2384,12 @@ function renderInscBody(id) {
   const adjustedInsts = recalculateInstallmentsWithCompensation(a, discInfo);
   const isAccepted = local.discountAdjustmentAccepted === true;
   
-  if (discInfo.needsAdjustment) {
+  if (discInfo.needsAdjustment && !local.overpaidAccepted) {
     const isRefund = discInfo.diff > 0; // family paid more → refund needed
     const bgColor = isRefund ? '#fff7ed' : '#fef2f2';
     const borderColor = isRefund ? '#f97316' : '#ef4444';
     const textColor = isRefund ? '#9a3412' : '#991b1b';
-    
+
     html += '<div style="border:2px solid ' + borderColor + ';border-radius:8px;padding:12px;margin-bottom:12px;background:' + bgColor + '">';
     html += '<h4 style="font-size:13px;color:' + textColor + ';text-transform:uppercase;margin-bottom:10px;letter-spacing:0.3px">🎯 1.5 Verificació del descompte promocional</h4>';
     
@@ -6037,26 +6046,24 @@ async function preloadIrisVegaClose() {
 }
 
 // Regla d'Ana (14/05): "Tots els que han pagat de més NO són incidència — no diem res"
+// Versió 2 (estesa a TOTS els sobrepagaments, no només període 20%)
 async function preloadOverpaidNotIncidence() {
-  if (LOCAL._meta && LOCAL._meta.preloadedOverpaidNotIncidence_20260514) return;
+  if (LOCAL._meta && LOCAL._meta.preloadedOverpaidNotIncidence_v2_20260514) return;
   if (!LOCAL._meta) LOCAL._meta = {};
   const today = '14/05/2026';
 
-  const P20_END_DATE = new Date(DISCOUNT_PERIODS.period_20_end);
-
   let n = 0;
   for (const a of ANALYZED) {
-    const submitted = parseSubmittedDate(a.submitted);
-    if (!submitted) continue;
-    if (submitted >= P20_END_DATE) continue;  // Només període 20%
+    const di = getDiscountInfo(a);
+    if (!di.needsAdjustment) continue;
+    if (di.diff <= 0.5) continue;  // Només sobrepagaments (diff positiu)
 
     const l = getLocal(a.id);
-    if (l.overpaidAccepted) continue;  // Ja marcat
+    if (l.overpaidAccepted) { n++; continue; }
     l.overpaidAccepted = true;
     l.overpaidAcceptedDate = today;
     l.overpaidAcceptedNote = 'Regla d Ana 14/05: tots els que han pagat de més no són incidència, no es diu res.';
 
-    // Marca com a resolt qualsevol issue de descompte
     if (!l.resolved) l.resolved = {};
     l.resolved['DESC_20_CONFIRMAT'] = true;
     l.resolved['SUBTOTAL_NO_CUADRA'] = true;
@@ -6066,13 +6073,13 @@ async function preloadOverpaidNotIncidence() {
     l.history.push({
       action: '✅ Sobrepagament acceptat (regla Ana 14/05)',
       date: today,
-      note: 'Període 20% però va pagar amb 10% (o sense descompte). No fer devolució — acceptar pagament tal qual. Inscripció: ' + submitted.toLocaleDateString('ca-ES')
+      note: 'La família ha pagat ' + di.diff.toFixed(2) + '€ DE MÉS (període ' + di.period + '). No fer devolució — acceptar pagament tal qual.'
     });
     n++;
   }
 
-  LOCAL._meta.preloadedOverpaidNotIncidence_20260514 = true;
-  console.log('Sobrepagaments acceptats: ' + n);
+  LOCAL._meta.preloadedOverpaidNotIncidence_v2_20260514 = true;
+  console.log('Sobrepagaments acceptats (v2 tots els períodes): ' + n);
   await saveLocal();
 }
 
