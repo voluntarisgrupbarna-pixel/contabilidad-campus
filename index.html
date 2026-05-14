@@ -1061,15 +1061,24 @@ function renderListSection(items, kind, title, color) {
   const emails = items.map(it => it.a.email).filter(e => e && e.indexOf('@')>0);
   const emailsCsv = [...new Set(emails)].join(', ');
 
+  // Collect IDs in this list for bulk actions
+  const idList = items.map(it => it.a.id);
+
   let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">' +
     '<div><div style="font-size:15px;font-weight:700;color:'+color+'">'+title+'</div>' +
     '<div style="font-size:12px;color:#64748b">'+items.length+' inscripcions · Suma pendent: <strong>'+fmt(sumDue)+'</strong></div></div>' +
-    '<div style="display:flex;gap:8px">' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
     '<button onclick="copyEmailsCsv(\''+kind+'\')" style="padding:8px 14px;background:#0891b2;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">📋 Copiar tots els emails</button>';
 
+  if (kind === 'noemail') {
+    html += '<button onclick="generateBulkConfirmMails(\''+idList.join(',')+'\')" style="padding:8px 14px;background:'+color+';color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">📨 Generar mails Gmail (tots)</button>';
+  }
   if (kind === 'pay2' || kind === 'pay3') {
     html += '<button onclick="generateBulkPaymentMails(\''+kind+'\')" style="padding:8px 14px;background:'+color+';color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">📨 Generar mails seqüencials</button>';
   }
+
+  // BULK CLOSE INCIDENCES
+  html += '<button onclick="bulkCloseIncidences(\''+idList.join(',')+'\',\''+kind+'\')" style="padding:8px 14px;background:#10b981;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">🔒 Tancar TOTES les incidències</button>';
 
   html += '</div></div>';
 
@@ -1201,6 +1210,75 @@ async function generatePaymentReminderMail(id, instIdx) {
   await saveLocal();
 }
 
+async function bulkCloseIncidences(idsCsv, kind) {
+  const ids = idsCsv.split(',').filter(x => x);
+  if (ids.length === 0) { alert('No hi ha cap cas a tancar.'); return; }
+  if (!confirm('Tancar TOTES les ' + ids.length + ' incidències d\'aquesta vista?\n\nEs marcaran com a resoltes i no tornaran a aparèixer com a pendents.')) return;
+
+  const today = new Date().toLocaleDateString('ca-ES');
+  let n = 0;
+  for (const id of ids) {
+    const a = ANALYZED.find(x => x.id === id);
+    if (!a) continue;
+    const local = getLocal(id);
+    // Mark all active issues as resolved
+    try {
+      getActiveIssues(a).forEach(iss => {
+        if (!local.resolved) local.resolved = {};
+        local.resolved[iss.tipo] = true;
+      });
+    } catch(e) {}
+    local.incidenceClosed = { closedDate: today, type: 'tancament_massiu_' + kind, note: 'Tancat des de Llistats (' + kind + ')' };
+    delete local.waitingResponse;
+    delete local.needsReview;
+    delete local.needsReviewReason;
+    if (!local.history) local.history = [];
+    local.history.push({
+      action: '🔒 Incidència tancada (acció massiva des de Llistats)',
+      date: today,
+      note: 'Vista: ' + kind
+    });
+    n++;
+  }
+  await saveLocal();
+  alert('✓ ' + n + ' incidències tancades.');
+  renderLists(kind);
+  // Recompute badges
+  updateBadgeIssues();
+  updateFilterCounts();
+}
+
+async function generateBulkConfirmMails(idsCsv) {
+  const ids = idsCsv.split(',').filter(x => x);
+  if (ids.length === 0) { alert('No hi ha cap cas.'); return; }
+  if (!confirm('S\'obriran ' + ids.length + ' pestanyes Gmail per generar els mails de confirmació d\'inscripció.\n\nVols continuar?')) return;
+
+  let n = 0;
+  for (const id of ids) {
+    const a = ANALYZED.find(x => x.id === id);
+    if (!a) continue;
+    const mail = buildMailForCase(id);
+    if (!mail) continue;
+    const url = 'https://mail.google.com/mail/u/0/?fs=1&tf=cm&to=' + encodeURIComponent(mail.to) +
+                '&su=' + encodeURIComponent(mail.subject) + '&body=' + encodeURIComponent(mail.body);
+    window.open(url, '_blank');
+    // Mark as waiting
+    const local = getLocal(id);
+    local.waitingResponse = { sentDate: new Date().toLocaleDateString('ca-ES'), type: 'mail confirmació (bulk Gmail)' };
+    if (!local.history) local.history = [];
+    local.history.push({
+      action: '📨 Mail Gmail obert (bulk generació)',
+      date: new Date().toLocaleDateString('ca-ES'),
+      note: 'Mail de confirmació obert a Gmail des de Llistats (massiu).'
+    });
+    n++;
+    await new Promise(r => setTimeout(r, 400));
+  }
+  await saveLocal();
+  alert('✓ S\'han obert ' + n + ' mails a Gmail. Revisa cada un i clica Send.');
+  renderLists('noemail');
+}
+
 async function generateBulkPaymentMails(kind) {
   const idx = kind === 'pay2' ? 1 : 2;
   const items = [];
@@ -1244,9 +1322,10 @@ function renderFamiliesSection(families) {
   let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">' +
     '<div><div style="font-size:15px;font-weight:700;color:#0d9488">👨‍👩‍👧 Famílies amb 2+ fills</div>' +
     '<div style="font-size:12px;color:#64748b">'+families.length+' famílies · '+famKids+' inscripcions · Total: <strong>'+fmt(famTotal)+'</strong> · Pendent: <strong>'+fmt(famPending)+'</strong></div></div>' +
-    '<div style="display:flex;gap:8px">' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
     '<button onclick="copyAllFamilyEmails()" style="padding:8px 14px;background:#0891b2;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">📋 Copiar tots els emails família</button>' +
-    '<button onclick="sendAllFamilyConsolidated()" style="padding:8px 14px;background:#0d9488;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">📨 Enviar consolidats a totes</button>' +
+    '<button onclick="sendAllFamilyConsolidated()" style="padding:8px 14px;background:#0d9488;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">📨 Generar consolidats Gmail (totes)</button>' +
+    '<button onclick="bulkCloseFamilies()" style="padding:8px 14px;background:#10b981;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">🔒 Tancar incidències famílies</button>' +
     '</div></div>';
 
   // Hidden field with family emails
@@ -1432,6 +1511,38 @@ async function copyAllFamilyEmails() {
     await navigator.clipboard.writeText(ta.value);
     alert('✓ Copiats ' + ta.value.split(',').length + ' emails de famílies amb 2+ fills.');
   } catch (e) { prompt('Copia aquests emails:', ta.value); }
+}
+
+async function bulkCloseFamilies() {
+  const buttons = document.querySelectorAll('button[onclick^="sendFamilyConsolidated"]');
+  const emails = [];
+  buttons.forEach(b => {
+    const m = b.getAttribute('onclick').match(/sendFamilyConsolidated\('([^']+)'\)/);
+    if (m) emails.push(decodeURIComponent(m[1]));
+  });
+  if (emails.length === 0) { alert('No hi ha famílies.'); return; }
+  if (!confirm('Tancar les incidències de totes les ' + emails.length + ' famílies visibles (' +
+               emails.length + ' emails, totes les inscripcions associades)?')) return;
+
+  const today = new Date().toLocaleDateString('ca-ES');
+  let n = 0;
+  for (const em of emails) {
+    const kids = ANALYZED.filter(a => (a.email||'').trim().toLowerCase() === em.trim().toLowerCase());
+    for (const kid of kids) {
+      const local = getLocal(kid.id);
+      local.incidenceClosed = { closedDate: today, type: 'tancament_massiu_families' };
+      delete local.waitingResponse;
+      delete local.needsReview;
+      delete local.needsReviewReason;
+      if (!local.history) local.history = [];
+      local.history.push({ action: '🔒 Incidència família tancada (massiu)', date: today, note: 'Tancat des de Famílies 2+ fills' });
+      n++;
+    }
+  }
+  await saveLocal();
+  alert('✓ Tancades incidències per a ' + n + ' inscripcions (' + emails.length + ' famílies).');
+  renderLists('families');
+  updateBadgeIssues();
 }
 
 async function sendAllFamilyConsolidated() {
@@ -5861,6 +5972,41 @@ async function preloadGmailSyncDay5() {
   await saveLocal();
 }
 
+async function preloadFamilyDraftsDay5() {
+  if (LOCAL._meta && LOCAL._meta.preloadedFamilyDrafts_20260514) return;
+  if (!LOCAL._meta) LOCAL._meta = {};
+  const today = '14/05/2026';
+
+  // 6 famílies amb esborrany consolidat creat a Gmail (14/05)
+  const familyDrafts = [
+    { email: 'sara.herrera.sh@gmail.com', draft: 'r8966969252864261104', kids: 'Maria Costa Herrera + Victor Costa' },
+    { email: 'laiaparis@hotmail.com', draft: 'r-3828354784720091813', kids: 'Sira + Aris Ohin Pous' },
+    { email: 'efv4548@hotmail.com', draft: 'r786609934362545101', kids: 'Gerard + Joan Fernandez Hernandez' },
+    { email: 'kiranjacob@gmail.com', draft: 'r3805594289284293440', kids: 'Rohan + Sara Thomas' },
+    { email: 'gcortescalafell@gmail.com', draft: 'r-3894430378340014565', kids: 'Laia + Aina Cortés Morales' },
+    { email: 'claraalegre@yahoo.es', draft: 'r6660759295761520512', kids: 'Maria + Julieta Boix' }
+  ];
+
+  for (const f of familyDrafts) {
+    const matchingKids = ANALYZED.filter(a => (a.email||'').trim().toLowerCase() === f.email);
+    for (const kid of matchingKids) {
+      const l = getLocal(kid.id);
+      if (!l.history) l.history = [];
+      l.waitingResponse = { sentDate: today, type: 'esborrany consolidat família (' + f.kids + ')', draftId: f.draft };
+      if (l.needsReview) delete l.needsReview;
+      if (l.needsReviewReason) delete l.needsReviewReason;
+      l.history.push({
+        action: '📝 Esborrany Gmail consolidat creat (família amb 2+ fills)',
+        date: today,
+        note: 'Mail únic per a ' + f.email + ' amb ' + f.kids + ' (draft ' + f.draft + '). PENDENT: revisar i enviar des de Gmail.'
+      });
+    }
+  }
+
+  LOCAL._meta.preloadedFamilyDrafts_20260514 = true;
+  await saveLocal();
+}
+
 (async () => {
   await loadLocal();
   await preloadNewCobros();
@@ -5875,6 +6021,7 @@ async function preloadGmailSyncDay5() {
   await preloadGmailScanDay4Extra();
   await preloadCordobaConsolidatedDraft();
   await preloadGmailSyncDay5();
+  await preloadFamilyDraftsDay5();
   renderInscriptions();
   updateBadgeIssues();
   updateFilterCounts();
