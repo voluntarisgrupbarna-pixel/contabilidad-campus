@@ -933,6 +933,7 @@ function renderLists(filterKey) {
   const toReply = [];        // M'han escrit i he de contestar (needsReview)
   const pay2 = [];           // 2n termini pendent
   const pay3 = [];           // 3r termini pendent
+  const familiesByEmail = {}; // email → list of inscriptions (siblings)
   let totalContractat = 0, totalPagat = 0, totalPendent = 0;
 
   ANALYZED.forEach(a => {
@@ -971,7 +972,26 @@ function renderLists(filterKey) {
     if (inst[2] && inst[2].status === 'pending') {
       pay3.push({ a: a, due: inst[2].due || '', amount: inst[2].amount });
     }
+
+    // 5) Familia (agrupar per email)
+    const em = (a.email||'').trim().toLowerCase();
+    if (em && em.indexOf('@') > 0) {
+      if (!familiesByEmail[em]) familiesByEmail[em] = [];
+      familiesByEmail[em].push(a);
+    }
   });
+
+  // Build families list: only those with 2+ DIFFERENT first names (excludes name-variant duplicates)
+  const families = [];
+  Object.keys(familiesByEmail).forEach(em => {
+    const kids = familiesByEmail[em];
+    if (kids.length < 2) return;
+    // Distinct first names (case insensitive)
+    const firstNames = new Set(kids.map(k => (k.child||'').trim().toLowerCase().split(/\s+/)[0]));
+    if (firstNames.size < 2) return; // probably duplicates, not siblings
+    families.push({ email: em, kids: kids });
+  });
+  families.sort((a,b) => (b.kids.length - a.kids.length) || a.email.localeCompare(b.email));
 
   // Update badge with total actions pending
   const totalActions = noEmail.length + toReply.length;
@@ -992,11 +1012,12 @@ function renderLists(filterKey) {
   '</div>';
 
   // Tabs
-  html += '<div style="display:flex;gap:4px;border-bottom:2px solid #e5e7eb;margin-bottom:0">' +
+  html += '<div style="display:flex;gap:4px;border-bottom:2px solid #e5e7eb;margin-bottom:0;flex-wrap:wrap">' +
     tabBtn('noemail', '📭 Sense mail enviat', noEmail.length, '#ef4444') +
     tabBtn('reply', '✉️ A contestar', toReply.length, '#7c3aed') +
     tabBtn('pay2', '💰 2n pagament', pay2.length, '#f59e0b') +
     tabBtn('pay3', '💸 3r pagament', pay3.length, '#3b82f6') +
+    tabBtn('families', '👨‍👩‍👧 Famílies 2+ fills', families.length, '#0d9488') +
   '</div>';
 
   // Body container
@@ -1010,6 +1031,8 @@ function renderLists(filterKey) {
     html += renderListSection(pay2, 'pay2', '2n pagament pendent', '#f59e0b');
   } else if (filterKey === 'pay3') {
     html += renderListSection(pay3, 'pay3', '3r pagament pendent', '#3b82f6');
+  } else if (filterKey === 'families') {
+    html += renderFamiliesSection(families);
   }
 
   html += '</div>';
@@ -1197,6 +1220,233 @@ async function generateBulkPaymentMails(kind) {
   }
   alert('✓ S\'han obert ' + items.length + ' mails a Gmail. Revisa cada un abans d\'enviar.');
   renderLists(kind); // refresh list
+}
+
+// ============ FAMÍLIES AMB 2+ FILLS ============
+function renderFamiliesSection(families) {
+  const fmt = (n) => '€' + (Number(n)||0).toFixed(2).replace('.', ',');
+  if (families.length === 0) {
+    return '<div style="padding:40px;text-align:center;color:#64748b">No s\'han detectat famílies amb més d\'un fill.</div>';
+  }
+  // Family totals
+  let famKids=0, famTotal=0, famPaid=0, famPending=0;
+  families.forEach(f => {
+    famKids += f.kids.length;
+    f.kids.forEach(k => {
+      famTotal += Number(k.subtotal_con_descuento||0);
+      (k.installments||[]).forEach(i => {
+        const amt = Number(i.amount||0);
+        if (i.status==='paid') famPaid += amt; else famPending += amt;
+      });
+    });
+  });
+
+  let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">' +
+    '<div><div style="font-size:15px;font-weight:700;color:#0d9488">👨‍👩‍👧 Famílies amb 2+ fills</div>' +
+    '<div style="font-size:12px;color:#64748b">'+families.length+' famílies · '+famKids+' inscripcions · Total: <strong>'+fmt(famTotal)+'</strong> · Pendent: <strong>'+fmt(famPending)+'</strong></div></div>' +
+    '<div style="display:flex;gap:8px">' +
+    '<button onclick="copyAllFamilyEmails()" style="padding:8px 14px;background:#0891b2;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">📋 Copiar tots els emails família</button>' +
+    '<button onclick="sendAllFamilyConsolidated()" style="padding:8px 14px;background:#0d9488;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">📨 Enviar consolidats a totes</button>' +
+    '</div></div>';
+
+  // Hidden field with family emails
+  const allFamEmails = families.map(f => f.email).join(', ');
+  html += '<textarea id="emails-csv-families" style="display:none">'+escapeHtml(allFamEmails)+'</textarea>';
+
+  // Card per family
+  html += '<div style="display:grid;gap:12px">';
+  families.forEach((f, idx) => {
+    // Per-family totals
+    let fTotal=0, fPaid=0, fPending=0;
+    f.kids.forEach(k => {
+      fTotal += Number(k.subtotal_con_descuento||0);
+      (k.installments||[]).forEach(i => {
+        const amt = Number(i.amount||0);
+        if (i.status==='paid') fPaid += amt; else fPending += amt;
+      });
+    });
+    const guardian = f.kids[0].guardian || '';
+    const familyKey = 'fam-' + idx;
+    html += '<div style="background:#f0fdfa;border:2px solid #5eead4;border-radius:10px;padding:14px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:10px">' +
+        '<div>' +
+          '<div style="font-weight:700;font-size:14px;color:#0f766e">'+escapeHtml(guardian)+'</div>' +
+          '<div style="font-size:11px;color:#64748b">'+escapeHtml(f.email)+' · '+f.kids.length+' fills</div>' +
+        '</div>' +
+        '<div style="text-align:right">' +
+          '<div style="font-size:11px;color:#64748b">Total família</div>' +
+          '<div style="font-size:18px;font-weight:700;color:#0f766e">'+fmt(fTotal)+'</div>' +
+          '<div style="font-size:11px"><span style="color:#10b981">✓ '+fmt(fPaid)+'</span> · <span style="color:#ef4444">⏳ '+fmt(fPending)+'</span></div>' +
+        '</div>' +
+      '</div>' +
+      // Kids table
+      '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px">' +
+      '<thead><tr style="background:rgba(13,148,136,0.1)"><th style="text-align:left;padding:6px;font-size:10px;text-transform:uppercase">Fill/a</th><th style="text-align:left;padding:6px;font-size:10px;text-transform:uppercase">Setmanes</th><th style="text-align:right;padding:6px;font-size:10px;text-transform:uppercase">Total</th><th style="text-align:right;padding:6px;font-size:10px;text-transform:uppercase">Pagat</th><th style="text-align:right;padding:6px;font-size:10px;text-transform:uppercase">Pendent</th></tr></thead>' +
+      '<tbody>';
+    f.kids.forEach(k => {
+      const kPaid = (k.installments||[]).filter(i=>i.status==='paid').reduce((s,i)=>s+Number(i.amount||0),0);
+      const kPending = (k.installments||[]).filter(i=>i.status==='pending').reduce((s,i)=>s+Number(i.amount||0),0);
+      const wks = (k.weeks||[]).map(w=>w.code).join(', ');
+      html += '<tr style="border-bottom:1px solid #ccfbf1">' +
+        '<td style="padding:6px"><strong>'+escapeHtml(k.child||'')+'</strong></td>' +
+        '<td style="padding:6px;font-family:monospace">'+wks+'</td>' +
+        '<td style="padding:6px;text-align:right;font-weight:600">'+fmt(k.subtotal_con_descuento)+'</td>' +
+        '<td style="padding:6px;text-align:right;color:#10b981">'+fmt(kPaid)+'</td>' +
+        '<td style="padding:6px;text-align:right;color:'+(kPending>0?'#ef4444':'#94a3b8')+'">'+fmt(kPending)+'</td>' +
+        '</tr>';
+    });
+    html += '</tbody></table>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        '<button onclick="sendFamilyConsolidated(\''+encodeURIComponent(f.email)+'\')" style="padding:8px 14px;background:#0d9488;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">📨 Mail consolidat als 2 fills</button>' +
+        '<button onclick="previewFamilyMail(\''+encodeURIComponent(f.email)+'\')" style="padding:8px 14px;background:#fff;color:#0d9488;border:1px solid #0d9488;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">👁️ Vista prèvia</button>' +
+      '</div>' +
+    '</div>';
+  });
+  html += '</div>';
+
+  return html;
+}
+
+// Build consolidated email body for a family (siblings)
+function buildFamilyConsolidatedMail(email) {
+  const fmt = (n) => Number(n||0).toFixed(2).replace('.', ',');
+  const kids = ANALYZED.filter(a => (a.email||'').trim().toLowerCase() === email.trim().toLowerCase());
+  if (kids.length === 0) return null;
+
+  // Filter out cancelled
+  const activeKids = kids.filter(k => {
+    const local = getLocal(k.id) || {};
+    return !local.cancelled;
+  });
+  if (activeKids.length === 0) return null;
+
+  const guardian = activeKids[0].guardian || 'famílies';
+
+  let famTotal=0, famPaid=0, famPending=0;
+  let body = 'Hola ' + guardian + ',\n\n';
+  body += 'Et fem arribar el resum consolidat del Campus Estiu TimeChamber 2026 per als teus fills:\n\n';
+
+  activeKids.forEach((k, idx) => {
+    const kPaid = (k.installments||[]).filter(i=>i.status==='paid').reduce((s,i)=>s+Number(i.amount||0),0);
+    const kPending = (k.installments||[]).filter(i=>i.status==='pending').reduce((s,i)=>s+Number(i.amount||0),0);
+    const wks = (k.weeks||[]).map(w => w.code + ' ('+w.dates+')').join(', ');
+    famTotal += Number(k.subtotal_con_descuento||0);
+    famPaid += kPaid;
+    famPending += kPending;
+
+    body += '─────────────────────────────\n';
+    body += '👤 ' + (k.child||'') + '\n';
+    body += '─────────────────────────────\n';
+    body += '· Setmanes: ' + (wks || '—') + '\n';
+    body += '· Total: ' + fmt(k.subtotal_con_descuento) + ' €\n';
+    if (Number(k.descuento||0) > 0) body += '· Descompte aplicat: -' + fmt(k.descuento) + ' €\n';
+    body += '· Pagat fins ara: ' + fmt(kPaid) + ' €\n';
+    body += '· Pendent: ' + fmt(kPending) + ' €\n';
+    if (k.installments && k.installments.length > 0) {
+      body += '· Terminis:\n';
+      k.installments.forEach(i => {
+        const status = i.status === 'paid' ? '✓ Pagat' : '⏳ Pendent';
+        body += '    - ' + i.label + ': ' + fmt(i.amount) + ' € — ' + status;
+        if (i.due) body += ' (' + i.due + ')';
+        body += '\n';
+      });
+    }
+    body += '\n';
+  });
+
+  body += '═════════════════════════════\n';
+  body += '💰 RESUM FAMILIAR (' + activeKids.length + ' fills)\n';
+  body += '═════════════════════════════\n';
+  body += '· Total contractat: ' + fmt(famTotal) + ' €\n';
+  body += '· Pagat: ' + fmt(famPaid) + ' €\n';
+  body += '· Pendent: ' + fmt(famPending) + ' €\n\n';
+
+  if (famPending > 0) {
+    body += '📌 Per fer els pagaments pendents, transferència a:\n';
+    body += 'CB GRUP BARNA · ES98 0049 6739 9325 1602 4137 · BIC: BSCHESMM\n';
+    body += 'Concepte: ' + activeKids.map(k => k.child).join(' + ') + ' · Campus\n\n';
+    body += 'Si ja heu fet algun pagament, envieu-nos el comprovant per email, si us plau.\n\n';
+  } else {
+    body += '🎉 Heu pagat tot! Moltes gràcies.\n\n';
+  }
+
+  body += 'Per a qualsevol consulta, podem parlar per WhatsApp (+34 698 425 153).\n\n';
+  body += 'Moltes gràcies per confiar en CB Grup Barna!\n';
+  body += 'Ana — Coordinadora Campus Estiu\n';
+  body += 'voluntarisgrupbarna@gmail.com';
+
+  const subject = '[CB Grup Barna] Resum Campus Estiu — ' + activeKids.map(k => k.child).join(' + ');
+
+  return { to: email, subject: subject, body: body, kidIds: activeKids.map(k=>k.id) };
+}
+
+async function sendFamilyConsolidated(emailEnc) {
+  const email = decodeURIComponent(emailEnc);
+  const mail = buildFamilyConsolidatedMail(email);
+  if (!mail) { alert('No s\'ha pogut generar el mail consolidat.'); return; }
+
+  const url = 'https://mail.google.com/mail/u/0/?fs=1&tf=cm&to=' + encodeURIComponent(mail.to) +
+              '&su=' + encodeURIComponent(mail.subject) + '&body=' + encodeURIComponent(mail.body);
+  window.open(url, '_blank');
+
+  // Mark all kids as waitingResponse + history
+  const today = new Date().toLocaleDateString('ca-ES');
+  for (const kid of mail.kidIds) {
+    const local = getLocal(kid);
+    if (!local.history) local.history = [];
+    local.waitingResponse = { sentDate: today, type: 'mail consolidat família (' + mail.kidIds.length + ' fills)' };
+    local.history.push({
+      action: '📨 Mail consolidat família obert a Gmail',
+      date: today,
+      note: 'Mail únic enviat a ' + email + ' amb resum de ' + mail.kidIds.length + ' fills.'
+    });
+  }
+  await saveLocal();
+  renderLists('families');
+}
+
+function previewFamilyMail(emailEnc) {
+  const email = decodeURIComponent(emailEnc);
+  const mail = buildFamilyConsolidatedMail(email);
+  if (!mail) { alert('No s\'ha pogut generar la vista prèvia.'); return; }
+
+  document.getElementById('modalContent').innerHTML =
+    '<button class="modal-close" onclick="closeModal()">×</button>' +
+    '<h2>👁️ Vista prèvia · Mail consolidat família</h2>' +
+    '<div style="background:#f0fdfa;border:1px solid #5eead4;border-radius:6px;padding:10px;margin-bottom:10px;font-size:12px">' +
+      '<strong>Per a:</strong> ' + escapeHtml(mail.to) + '<br>' +
+      '<strong>Assumpte:</strong> ' + escapeHtml(mail.subject) +
+    '</div>' +
+    '<textarea readonly style="width:100%;min-height:380px;font-family:monospace;font-size:12px;padding:10px;border:1px solid #cbd5e1;border-radius:6px;background:#fafafa">' + escapeHtml(mail.body) + '</textarea>' +
+    '<div style="display:flex;gap:8px;margin-top:10px">' +
+      '<button onclick="closeModal();sendFamilyConsolidated(\''+encodeURIComponent(email)+'\')" style="padding:10px 16px;background:#0d9488;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">📨 Obrir a Gmail</button>' +
+      '<button onclick="closeModal()" style="padding:10px 16px;background:#e5e7eb;color:#1e293b;border:none;border-radius:6px;cursor:pointer;font-weight:600">Tancar</button>' +
+    '</div>';
+  document.getElementById('modal').style.display = 'flex';
+}
+
+async function copyAllFamilyEmails() {
+  const ta = document.getElementById('emails-csv-families');
+  if (!ta) return;
+  try {
+    await navigator.clipboard.writeText(ta.value);
+    alert('✓ Copiats ' + ta.value.split(',').length + ' emails de famílies amb 2+ fills.');
+  } catch (e) { prompt('Copia aquests emails:', ta.value); }
+}
+
+async function sendAllFamilyConsolidated() {
+  // Iterate over rendered families
+  const buttons = document.querySelectorAll('button[onclick^="sendFamilyConsolidated"]');
+  if (buttons.length === 0) { alert('No hi ha famílies a la llista.'); return; }
+  if (!confirm('S\'obriran ' + buttons.length + ' pestanyes Gmail (una per família).\n\nVols continuar?')) return;
+  for (let i = 0; i < buttons.length; i++) {
+    const m = buttons[i].getAttribute('onclick').match(/sendFamilyConsolidated\('([^']+)'\)/);
+    if (m) {
+      await sendFamilyConsolidated(m[1]);
+      await new Promise(r => setTimeout(r, 350));
+    }
+  }
+  alert('✓ S\'han obert ' + buttons.length + ' mails consolidats. Revisa cada un abans d\'enviar.');
 }
 
 // ============ INSCRIPTIONS ============
