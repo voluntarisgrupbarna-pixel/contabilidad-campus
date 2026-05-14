@@ -1885,7 +1885,7 @@ function renderStatusOverview() {
     const di = getDiscountInfo(a);
     const issues = getActiveIssues(a);
     
-    if (di.realPct === 20) {
+    if (di.realPct === 20 && !local.overpaidAccepted) {
       discount20Count++;
     }
     
@@ -2119,6 +2119,9 @@ function renderInscriptions() {
     if (filter === 'discount20') {
       const di = getDiscountInfo(a);
       if (di.realPct !== 20) return false;
+      // Skip those marked as "overpaid accepted" (regla Ana: si han pagat de més, no és incidència)
+      const local2 = LOCAL[a.id] || {};
+      if (local2.overpaidAccepted) return false;
     }
     // discount5 filter: show families that were inscribed during the original 5% period
     // (now they're correct with 10%, but user might want to see them)
@@ -5371,7 +5374,7 @@ function updateFilterCounts() {
         perfectCount++;
       }
     }
-    if (di.realPct === 20) discount20Count++;
+    if (di.realPct === 20 && !local.overpaidAccepted) discount20Count++;
     // Count families originally in the 5% period (now correctly at 10%)
     const submitted = parseSubmittedDate(a.submitted);
     if (submitted) {
@@ -6033,6 +6036,46 @@ async function preloadIrisVegaClose() {
   await saveLocal();
 }
 
+// Regla d'Ana (14/05): "Tots els que han pagat de més NO són incidència — no diem res"
+async function preloadOverpaidNotIncidence() {
+  if (LOCAL._meta && LOCAL._meta.preloadedOverpaidNotIncidence_20260514) return;
+  if (!LOCAL._meta) LOCAL._meta = {};
+  const today = '14/05/2026';
+
+  const P20_END_DATE = new Date(DISCOUNT_PERIODS.period_20_end);
+
+  let n = 0;
+  for (const a of ANALYZED) {
+    const submitted = parseSubmittedDate(a.submitted);
+    if (!submitted) continue;
+    if (submitted >= P20_END_DATE) continue;  // Només període 20%
+
+    const l = getLocal(a.id);
+    if (l.overpaidAccepted) continue;  // Ja marcat
+    l.overpaidAccepted = true;
+    l.overpaidAcceptedDate = today;
+    l.overpaidAcceptedNote = 'Regla d Ana 14/05: tots els que han pagat de més no són incidència, no es diu res.';
+
+    // Marca com a resolt qualsevol issue de descompte
+    if (!l.resolved) l.resolved = {};
+    l.resolved['DESC_20_CONFIRMAT'] = true;
+    l.resolved['SUBTOTAL_NO_CUADRA'] = true;
+    l.resolved['DISCOUNT_MISSING'] = true;
+
+    if (!l.history) l.history = [];
+    l.history.push({
+      action: '✅ Sobrepagament acceptat (regla Ana 14/05)',
+      date: today,
+      note: 'Període 20% però va pagar amb 10% (o sense descompte). No fer devolució — acceptar pagament tal qual. Inscripció: ' + submitted.toLocaleDateString('ca-ES')
+    });
+    n++;
+  }
+
+  LOCAL._meta.preloadedOverpaidNotIncidence_20260514 = true;
+  console.log('Sobrepagaments acceptats: ' + n);
+  await saveLocal();
+}
+
 (async () => {
   await loadLocal();
   await preloadNewCobros();
@@ -6049,6 +6092,7 @@ async function preloadIrisVegaClose() {
   await preloadGmailSyncDay5();
   await preloadFamilyDraftsDay5();
   await preloadIrisVegaClose();
+  await preloadOverpaidNotIncidence();
   renderInscriptions();
   updateBadgeIssues();
   updateFilterCounts();
