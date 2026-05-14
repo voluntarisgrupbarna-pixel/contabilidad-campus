@@ -5802,6 +5802,65 @@ async function preloadCordobaConsolidatedDraft() {
   await saveLocal();
 }
 
+async function preloadGmailSyncDay5() {
+  if (LOCAL._meta && LOCAL._meta.preloadedGmailSyncDay5_20260514) return;
+  if (!LOCAL._meta) LOCAL._meta = {};
+  const today = '14/05/2026';
+
+  function closeCase(id, note) {
+    const l = getLocal(id);
+    if (!l.history) l.history = [];
+    l.incidenceClosed = { date: today, note: note };
+    if (l.needsReview) delete l.needsReview;
+    if (l.needsReviewReason) delete l.needsReviewReason;
+    if (l.waitingResponse) delete l.waitingResponse;
+    l.history.push({ action: '✅ Incidència tancada (sync Gmail 14/05)', date: today, note: note });
+  }
+
+  function markWaiting(id, sentDate, note) {
+    const l = getLocal(id);
+    if (!l.history) l.history = [];
+    l.waitingResponse = { sentDate: sentDate, type: 'mail enviat (sync Gmail 14/05)' };
+    if (l.needsReview) delete l.needsReview;
+    if (l.needsReviewReason) delete l.needsReviewReason;
+    l.history.push({ action: '📨 Mail enviat (confirmat per sync Gmail)', date: today, note: note });
+  }
+
+  // === TANCADES (mail enviat + resposta rebuda + resolt) ===
+  closeCase('6520091725769990941', 'Luis Campillo cancel·lat, Ana va respondre 12/05 17:07 confirmant. Tancat.');
+  closeCase('6524474760513236596', 'Benjamin Medina: mail corregit enviat 12/05 16:58 + 2n pagament confirmat per Erick + mail final 14/05. Tancada (pendent només 3r termini Juny).');
+  closeCase('6524952614325146543', 'ADRIA MARTINEZ: mail enviat 11/05, Sara va replicar 13/05, Ana va respondre 13/05. Total pagat. Tancada.');
+  closeCase('6520690309413896346', 'Gisela Grasas Vilamala: mail enviat 12/05 + reacció 👍 de Mireia. Tancada.');
+  closeCase('6523445499427546960', 'GABRIEL PRIM: mail enviat 12/05, Gema va enviar 2n comprovant 13/05 (cobreix Gabriel+Mauro). Tot pagat. Tancada.');
+  closeCase('6527000440414241642', 'Noa Córdoba: mail final amb 20% enviat 14/05 10:53. Tancada.');
+  closeCase('6526997810411997382', 'Martina Córdoba: 20% confirmat per Ana "Sii!!!" + mail 11/05 14:32 + mail nou enviat 14/05. Tancada.');
+
+  // === ESPERANT RESPOSTA (mail enviat recentment, encara no contestat) ===
+  markWaiting('6532433487595199292', '14/05/2026', 'Tanit Simó camos: mail enviat avui 14/05 13:14 a Laia Camos.');
+  markWaiting('6530075975847807239', '12/05/2026', 'Abril Simó Camós: mail enviat 12/05 17:45 a Laia Camos.');
+  markWaiting('6523448729427623703', '14/05/2026', 'MAURO PRIM GÓMEZ: mail enviat avui 14/05 13:14 a Gema.');
+  markWaiting('6524912214321580608', '14/05/2026', 'GUILLEM MARTINEZ MONRABA: mail enviat avui 14/05 13:13 a Sara Monraba.');
+  markWaiting('6522180093021203357', '14/05/2026', 'Oriol Jiménez: mail enviat avui 14/05 13:11 a Lidia.');
+  markWaiting('6524938091511222513', '14/05/2026', 'Axel Roche Alemany: mail final enviat avui 14/05 10:54 a Silvia (S2 cancel·lada, S3+S4+S5).');
+  markWaiting('6526503524425189129', '12/05/2026', 'Asier González: mail corregit enviat 12/05 17:44 a Hugo (S3 mitja jornada €160).');
+  markWaiting('6521673603581625166', '12/05/2026', 'Joana Vall Molina: mail enviat múltiples vegades a Berta Molina 12/05.');
+  markWaiting('6520518479322359193', '12/05/2026', 'Malia Montserrat Mateo: mail enviat 12/05 14:50 a Marçal.');
+  markWaiting('6526008250652032390', '11/05/2026', 'Jan Kudryashov Seleskerova: mail enviat 11/05 12:45 a Eugenia.');
+  markWaiting('6525861140654452182', '12/05/2026', 'Teo Kudryashov Seleskerova: mail enviat 12/05 14:47 a Eugenia.');
+  markWaiting('6517078548716984030', '12/05/2026', 'Ander Sanchez Lopez: dates pagaments enviades 12/05 06:47 a Aitor.');
+  markWaiting('6525218632314998841', '11/05/2026', 'Enric Sesé Palos: mail enviat 11/05 14:12 a Enrique (verificar duplicat amb id 6518343912311707662).');
+  markWaiting('6518343912311707662', '11/05/2026', 'Enric Sese Palos: mail enviat 11/05 13:53 a sese.palos (verificar duplicat amb id 6525218632314998841).');
+  markWaiting('6525076299315711119', '11/05/2026', 'Daniela Luque Almendros: mail enviat 11/05 14:06 a Silvia (lilasilf@hotmail.com).');
+  markWaiting('6524933582813637580', '11/05/2026', 'BRUNO PASTOR PEREZ: mail enviat 11/05 13:43 a Judith.');
+  markWaiting('6525150185417112303', '11/05/2026', 'Mia Lopez ferrandiz: mail enviat 11/05 13:38 a Cristina.');
+  markWaiting('6525264270818672578', '11/05/2026', 'Paula Armendáriz Ramon: mail enviat 11/05 12:43 a Carlos.');
+  markWaiting('6531685005111409697', '11/05/2026', 'CLARA MARIA ROCA MARTÍ: mail enviat 11/05 12:43 a Ana Martí.');
+  markWaiting('6525280694841955233', '30/04/2026', 'Berta Cadevall Perez: mail enviat 30/04 16:31 a Ruben Cadevall.');
+
+  LOCAL._meta.preloadedGmailSyncDay5_20260514 = true;
+  await saveLocal();
+}
+
 (async () => {
   await loadLocal();
   await preloadNewCobros();
@@ -5815,6 +5874,7 @@ async function preloadCordobaConsolidatedDraft() {
   await preloadGmailScanDay4();
   await preloadGmailScanDay4Extra();
   await preloadCordobaConsolidatedDraft();
+  await preloadGmailSyncDay5();
   renderInscriptions();
   updateBadgeIssues();
   updateFilterCounts();
