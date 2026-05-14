@@ -232,6 +232,7 @@
     <div class="tab" onclick="showTab('upload')">📥 Pujar justificants</div>
     <div class="tab" onclick="showTab('cobros')">💰 Cobraments <span class="badge" id="badge-unmatched">0</span></div>
     <div class="tab" onclick="showTab('sinpago')">📧 Sense pagament <span class="badge" id="badge-sinpago" style="background:#ef4444">0</span></div>
+    <div class="tab" onclick="showTab('lists')">📋 Llistats &amp; cobraments <span class="badge" id="badge-lists" style="background:#7c3aed">0</span></div>
     <div class="tab" onclick="showTab('summary')">📊 Resum</div>
   </div>
 
@@ -348,6 +349,10 @@
       </div>
     </div>
     <div id="sinpago-list"></div>
+  </div>
+
+  <div id="page-lists" class="page">
+    <div id="lists-container"></div>
   </div>
 
   <div id="page-summary" class="page">
@@ -913,6 +918,285 @@ function showTab(tabName) {
   if (tabName === 'summary') renderSummary();
   if (tabName === 'cobros') renderCobros();
   if (tabName === 'sinpago') renderSinPago();
+  if (tabName === 'lists') renderLists();
+}
+
+// ============ LLISTATS (4 categories + imports totals) ============
+function renderLists(filterKey) {
+  filterKey = filterKey || window._listsFilter || 'noemail';
+  window._listsFilter = filterKey;
+
+  const fmt = (n) => '€' + (Number(n)||0).toFixed(2).replace('.', ',');
+
+  // Classify each inscription
+  const noEmail = [];        // No s'ha enviat encara cap mail
+  const toReply = [];        // M'han escrit i he de contestar (needsReview)
+  const pay2 = [];           // 2n termini pendent
+  const pay3 = [];           // 3r termini pendent
+  let totalContractat = 0, totalPagat = 0, totalPendent = 0;
+
+  ANALYZED.forEach(a => {
+    const local = getLocal(a.id) || {};
+    const cancelled = !!local.cancelled;
+    const closed = !!local.incidenceClosed;
+    if (cancelled) return; // exclude cancelled completely
+
+    // Totals (only non-cancelled)
+    const sub = Number(a.subtotal_con_descuento || 0);
+    totalContractat += sub;
+    (a.installments||[]).forEach(i => {
+      const amt = Number(i.amount||0);
+      if (i.status === 'paid') totalPagat += amt;
+      else totalPendent += amt;
+    });
+
+    // 1) No s'ha enviat cap mail (no waitingResponse, no closed, no needsReview)
+    const hasSentMail = !!local.waitingResponse || (local.history||[]).some(h => /enviat|mail enviat|copiat al portapapers/i.test(h.action||''));
+    if (!hasSentMail && !closed && !local.needsReview) {
+      noEmail.push(a);
+    }
+
+    // 2) M'han escrit → respondre
+    if (local.needsReview && !closed) {
+      toReply.push(a);
+    }
+
+    // 3) 2n termini pendent
+    const inst = a.installments || [];
+    if (inst[1] && inst[1].status === 'pending') {
+      pay2.push({ a: a, due: inst[1].due || '', amount: inst[1].amount });
+    }
+
+    // 4) 3r termini pendent
+    if (inst[2] && inst[2].status === 'pending') {
+      pay3.push({ a: a, due: inst[2].due || '', amount: inst[2].amount });
+    }
+  });
+
+  // Update badge with total actions pending
+  const totalActions = noEmail.length + toReply.length;
+  const badge = document.getElementById('badge-lists');
+  if (badge) badge.textContent = totalActions;
+
+  const tabBtn = (key, label, count, color) =>
+    '<button onclick="renderLists(\''+key+'\')" style="padding:10px 16px;border:none;border-radius:8px 8px 0 0;cursor:pointer;font-weight:600;font-size:13px;background:'+(filterKey===key?color:'#e5e7eb')+';color:'+(filterKey===key?'#fff':'#1e293b')+'">'+label+' <span style="background:'+(filterKey===key?'rgba(255,255,255,0.3)':'#cbd5e1')+';padding:2px 8px;border-radius:10px;margin-left:4px">'+count+'</span></button>';
+
+  let html = '';
+
+  // Header: totals
+  html += '<div style="background:linear-gradient(135deg,#1e293b,#0f172a);color:#fff;border-radius:12px;padding:20px;margin-bottom:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px">' +
+    '<div><div style="font-size:11px;opacity:0.7;text-transform:uppercase;letter-spacing:0.5px">Total contractat</div><div style="font-size:24px;font-weight:700;margin-top:4px">'+fmt(totalContractat)+'</div></div>' +
+    '<div><div style="font-size:11px;opacity:0.7;text-transform:uppercase;letter-spacing:0.5px">Pagat</div><div style="font-size:24px;font-weight:700;color:#10b981;margin-top:4px">'+fmt(totalPagat)+'</div></div>' +
+    '<div><div style="font-size:11px;opacity:0.7;text-transform:uppercase;letter-spacing:0.5px">Pendent</div><div style="font-size:24px;font-weight:700;color:#f59e0b;margin-top:4px">'+fmt(totalPendent)+'</div></div>' +
+    '<div><div style="font-size:11px;opacity:0.7;text-transform:uppercase;letter-spacing:0.5px">% Cobrat</div><div style="font-size:24px;font-weight:700;color:#3b82f6;margin-top:4px">'+(totalContractat>0?((totalPagat/totalContractat)*100).toFixed(1):0)+'%</div></div>' +
+  '</div>';
+
+  // Tabs
+  html += '<div style="display:flex;gap:4px;border-bottom:2px solid #e5e7eb;margin-bottom:0">' +
+    tabBtn('noemail', '📭 Sense mail enviat', noEmail.length, '#ef4444') +
+    tabBtn('reply', '✉️ A contestar', toReply.length, '#7c3aed') +
+    tabBtn('pay2', '💰 2n pagament', pay2.length, '#f59e0b') +
+    tabBtn('pay3', '💸 3r pagament', pay3.length, '#3b82f6') +
+  '</div>';
+
+  // Body container
+  html += '<div style="background:#fff;border:2px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;padding:16px">';
+
+  if (filterKey === 'noemail') {
+    html += renderListSection(noEmail.map(a => ({a:a})), 'noemail', 'Pendents d\'enviar el primer mail de comunicació', '#ef4444');
+  } else if (filterKey === 'reply') {
+    html += renderListSection(toReply.map(a => ({a:a})), 'reply', 'M\'han escrit — pendent de respondre', '#7c3aed');
+  } else if (filterKey === 'pay2') {
+    html += renderListSection(pay2, 'pay2', '2n pagament pendent', '#f59e0b');
+  } else if (filterKey === 'pay3') {
+    html += renderListSection(pay3, 'pay3', '3r pagament pendent', '#3b82f6');
+  }
+
+  html += '</div>';
+
+  document.getElementById('lists-container').innerHTML = html;
+}
+
+function renderListSection(items, kind, title, color) {
+  const fmt = (n) => '€' + (Number(n)||0).toFixed(2).replace('.', ',');
+
+  if (items.length === 0) {
+    return '<div style="padding:40px;text-align:center;color:#10b981;font-size:16px">✓ No hi ha cap cas en aquesta categoria.</div>';
+  }
+
+  // Compute totals for this list
+  let sumDue = 0;
+  items.forEach(it => {
+    if (kind === 'pay2' || kind === 'pay3') sumDue += Number(it.amount||0);
+    else {
+      // for noemail/reply, sum pending of inscription
+      (it.a.installments||[]).forEach(i => { if (i.status==='pending') sumDue += Number(i.amount||0); });
+    }
+  });
+
+  // Emails string
+  const emails = items.map(it => it.a.email).filter(e => e && e.indexOf('@')>0);
+  const emailsCsv = [...new Set(emails)].join(', ');
+
+  let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">' +
+    '<div><div style="font-size:15px;font-weight:700;color:'+color+'">'+title+'</div>' +
+    '<div style="font-size:12px;color:#64748b">'+items.length+' inscripcions · Suma pendent: <strong>'+fmt(sumDue)+'</strong></div></div>' +
+    '<div style="display:flex;gap:8px">' +
+    '<button onclick="copyEmailsCsv(\''+kind+'\')" style="padding:8px 14px;background:#0891b2;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">📋 Copiar tots els emails</button>';
+
+  if (kind === 'pay2' || kind === 'pay3') {
+    html += '<button onclick="generateBulkPaymentMails(\''+kind+'\')" style="padding:8px 14px;background:'+color+';color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">📨 Generar mails seqüencials</button>';
+  }
+
+  html += '</div></div>';
+
+  // Hidden field with emails
+  html += '<textarea id="emails-csv-'+kind+'" style="display:none">'+escapeHtml(emailsCsv)+'</textarea>';
+
+  // Table
+  html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">' +
+    '<thead><tr style="background:#f8fafc;border-bottom:2px solid '+color+'">' +
+    '<th style="text-align:left;padding:10px;font-size:11px;text-transform:uppercase;color:#64748b">Nen/a</th>' +
+    '<th style="text-align:left;padding:10px;font-size:11px;text-transform:uppercase;color:#64748b">Tutor · Email</th>' +
+    '<th style="text-align:left;padding:10px;font-size:11px;text-transform:uppercase;color:#64748b">Setmanes</th>' +
+    '<th style="text-align:right;padding:10px;font-size:11px;text-transform:uppercase;color:#64748b">'+(kind==='pay2'||kind==='pay3'?'Import termini':'Total / Pendent')+'</th>' +
+    '<th style="text-align:left;padding:10px;font-size:11px;text-transform:uppercase;color:#64748b">'+(kind==='pay2'||kind==='pay3'?'Venciment':'Estat')+'</th>' +
+    '<th style="text-align:right;padding:10px;font-size:11px;text-transform:uppercase;color:#64748b">Accions</th>' +
+    '</tr></thead><tbody>';
+
+  items.forEach(it => {
+    const a = it.a;
+    const local = getLocal(a.id) || {};
+    const weeks = (a.weeks||[]).map(w => w.code).join(', ');
+    const pendentInst = (a.installments||[]).filter(i => i.status==='pending').reduce((s,i)=>s+Number(i.amount||0),0);
+
+    let importCol, dueCol;
+    if (kind === 'pay2' || kind === 'pay3') {
+      importCol = fmt(it.amount);
+      dueCol = '<span style="background:#fef3c7;padding:2px 8px;border-radius:4px;font-size:11px;color:#92400e">'+(it.due||'Pendent')+'</span>';
+    } else {
+      importCol = '<div style="font-weight:600">'+fmt(a.subtotal_con_descuento)+'</div><div style="font-size:11px;color:#ef4444">Pendent: '+fmt(pendentInst)+'</div>';
+      dueCol = local.needsReview ? '<span style="background:#fce7f3;color:#9f1239;padding:2px 8px;border-radius:4px;font-size:11px">📥 Resposta</span>' :
+               (local.waitingResponse ? '<span style="background:#ede9fe;color:#5b21b6;padding:2px 8px;border-radius:4px;font-size:11px">⏳ Esperant</span>' :
+                '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:4px;font-size:11px">📭 Sense mail</span>');
+    }
+
+    html += '<tr style="border-bottom:1px solid #f1f5f9">' +
+      '<td style="padding:10px"><strong>'+escapeHtml(a.child||'')+'</strong></td>' +
+      '<td style="padding:10px"><div>'+escapeHtml(a.guardian||'')+'</div><div style="font-size:11px;color:#64748b">'+escapeHtml(a.email||'')+'</div></td>' +
+      '<td style="padding:10px;font-family:monospace;font-size:11px">'+weeks+'</td>' +
+      '<td style="padding:10px;text-align:right">'+importCol+'</td>' +
+      '<td style="padding:10px">'+dueCol+'</td>' +
+      '<td style="padding:10px;text-align:right;white-space:nowrap">' +
+        '<button onclick="openInscFromList(\''+a.id+'\')" style="padding:5px 10px;background:#1e293b;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;margin-right:4px">👁️ Veure</button>' +
+        '<button onclick="quickGenerateMail(\''+a.id+'\',\''+kind+'\')" style="padding:5px 10px;background:'+color+';color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">📨 Mail</button>' +
+      '</td></tr>';
+  });
+
+  html += '</tbody></table></div>';
+  return html;
+}
+
+async function copyEmailsCsv(kind) {
+  const ta = document.getElementById('emails-csv-' + kind);
+  if (!ta) return;
+  try {
+    await navigator.clipboard.writeText(ta.value);
+    alert('✓ Copiats ' + ta.value.split(',').length + ' emails al portapapers.\n\nEnganxa\'ls al camp BCC de Gmail per enviar a tots a la vegada.');
+  } catch (e) {
+    prompt('Copia aquests emails:', ta.value);
+  }
+}
+
+function openInscFromList(id) {
+  showTabByName('inscriptions');
+  setTimeout(() => {
+    const el = document.getElementById('insc-' + id);
+    if (el) {
+      el.scrollIntoView({behavior:'smooth', block:'center'});
+      el.style.boxShadow = '0 0 0 3px #f59e0b';
+      setTimeout(() => { el.style.boxShadow = ''; }, 2500);
+    }
+  }, 200);
+}
+
+async function quickGenerateMail(id, kind) {
+  if (kind === 'pay2' || kind === 'pay3') {
+    // Generate a payment reminder mail
+    await generatePaymentReminderMail(id, kind === 'pay2' ? 1 : 2);
+  } else {
+    // Use existing mail flow
+    const mail = buildMailForCase(id);
+    if (!mail) { alert('No s\'ha pogut generar mail per a aquest cas.'); return; }
+    const subject = encodeURIComponent(mail.subject || '');
+    const body = encodeURIComponent(mail.body || '');
+    window.open('https://mail.google.com/mail/u/0/?fs=1&tf=cm&to='+encodeURIComponent(mail.to)+'&su='+subject+'&body='+body, '_blank');
+  }
+}
+
+async function generatePaymentReminderMail(id, instIdx) {
+  const a = ANALYZED.find(x => x.id === id);
+  if (!a) return;
+  const inst = a.installments[instIdx];
+  if (!inst) return;
+  const fmt = (n) => Number(n).toFixed(2).replace('.', ',');
+
+  const numTermini = instIdx === 1 ? '2n' : '3r';
+  const subject = '[CB Grup Barna] Recordatori ' + numTermini + ' termini Campus Estiu — ' + (a.child||'');
+
+  const pagat = a.installments.filter(i => i.status==='paid').reduce((s,i)=>s+Number(i.amount||0), 0);
+  const totalPendent = a.installments.filter(i => i.status==='pending').reduce((s,i)=>s+Number(i.amount||0), 0);
+
+  const body =
+    'Hola ' + (a.guardian||'') + ',\n\n' +
+    'Et recordem que el ' + numTermini + ' termini del Campus Estiu de ' + (a.child||'') + ' venç el ' + (inst.due||'aviat') + '.\n\n' +
+    'RESUM:\n' +
+    '· Total contractat: ' + fmt(a.subtotal_con_descuento) + ' €\n' +
+    '· Pagat fins ara: ' + fmt(pagat) + ' €\n' +
+    '· Aquest termini (' + numTermini + '): ' + fmt(inst.amount) + ' €\n' +
+    '· Pendent total: ' + fmt(totalPendent) + ' €\n\n' +
+    'Pots fer la transferència al següent compte:\n' +
+    'CB GRUP BARNA · ES98 0049 6739 9325 1602 4137 · BIC: BSCHESMM\n' +
+    'Concepte: ' + (a.child||'') + ' - ' + numTermini + ' termini Campus\n\n' +
+    'Si ja l\'has fet, si us plau envia\'ns el comprovant per email.\n\n' +
+    'Moltes gràcies!\n' +
+    'Ana — CB Grup Barna\n' +
+    'voluntarisgrupbarna@gmail.com';
+
+  const url = 'https://mail.google.com/mail/u/0/?fs=1&tf=cm&to=' + encodeURIComponent(a.email||'') + '&su=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+  window.open(url, '_blank');
+
+  // Mark as waiting response
+  const local = getLocal(id);
+  if (!local.history) local.history = [];
+  local.waitingResponse = { sentDate: new Date().toLocaleDateString('ca-ES'), type: 'recordatori ' + numTermini + ' termini' };
+  local.history.push({
+    action: '📨 Mail de recordatori ' + numTermini + ' termini obert a Gmail',
+    date: new Date().toLocaleDateString('ca-ES'),
+    note: 'Mail generat des de Llistats: import ' + fmt(inst.amount) + ' €, venciment ' + (inst.due||'')
+  });
+  await saveLocal();
+}
+
+async function generateBulkPaymentMails(kind) {
+  const idx = kind === 'pay2' ? 1 : 2;
+  const items = [];
+  ANALYZED.forEach(a => {
+    const local = getLocal(a.id) || {};
+    if (local.cancelled) return;
+    const inst = a.installments || [];
+    if (inst[idx] && inst[idx].status === 'pending') items.push(a.id);
+  });
+
+  if (items.length === 0) { alert('No hi ha mails per generar.'); return; }
+  if (!confirm('S\'obriran ' + items.length + ' pestanyes Gmail (una per família).\n\nVols continuar?')) return;
+
+  for (let i = 0; i < items.length; i++) {
+    await generatePaymentReminderMail(items[i], idx);
+    await new Promise(r => setTimeout(r, 350)); // delay between tabs
+  }
+  alert('✓ S\'han obert ' + items.length + ' mails a Gmail. Revisa cada un abans d\'enviar.');
+  renderLists(kind); // refresh list
 }
 
 // ============ INSCRIPTIONS ============
@@ -5248,6 +5532,19 @@ async function preloadGmailScanDay4Extra() {
   setTimeout(() => {
     const n = getSinPagoList().length;
     document.getElementById('badge-sinpago').textContent = n;
+    // Compute badge for Llistats (pre-render once to populate count)
+    try {
+      let count = 0;
+      ANALYZED.forEach(a => {
+        const local = getLocal(a.id) || {};
+        if (local.cancelled || local.incidenceClosed) return;
+        const hasSentMail = !!local.waitingResponse || (local.history||[]).some(h => /enviat|mail enviat|copiat al portapapers/i.test(h.action||''));
+        if (local.needsReview) count++;
+        else if (!hasSentMail) count++;
+      });
+      const b = document.getElementById('badge-lists');
+      if (b) b.textContent = count;
+    } catch(e) {}
   }, 100);
 })();
 </script>
